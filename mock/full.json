@@ -1,11 +1,11 @@
 {
     "transactionId": "undefined",
     "debug": {
-        "unspentRVNAmount": "1,22",
-        "rvnUTXOs": [
+        "unspentXNAAmount": "1,22",
+        "xnaUTXOs": [
             {
                 "address": "RTPSdYw3iB93L6Hb9xWd1ixVxPYu1QePdi",
-                "assetName": "RVN",
+                "assetName": "XNA",
                 "txid": "1cd17de0a43868f32e8c21b8c16e3b07dee36781ea1e234928594b1820fe6cfe",
                 "outputIndex": 2,
                 "script": "76a914c6a0e8557c7567a4d9cc84574c34fbb62ece3c9688ac",
@@ -26,8 +26,8 @@
         ],
         "assetName": "FREN/YULETIDE2021",
         "fee": 0.02,
-        "rvnAmount": 0,
-        "rvnChangeAmount": 1.2,
+        "xnaAmount": 0,
+        "xnaChangeAmount": 1.2,
         "inputs": [
             {
                 "txid": "1cd17de0a43868f32e8c21b8c16e3b07dee36781ea1e234928594b1820fe6cfe",

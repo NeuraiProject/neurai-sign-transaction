@@ -1,15 +1,15 @@
 const Signer = require("./dist/index.cjs");
 
 /*
-export function sign(network: "rvn" | "rvn-test" | "evr" | "evr-test",
+export function sign(network: "xna" | "xna-test" | "evr" | "evr-test",
 rawTransactionHex: string,
  UTXOs: Array<IUTXO>, 
  privateKeys: any): string;
 */
-test("Verify sign RVN transaction", () => {
-  const testData = require("./mock/test_rvn_transaction.json");
-  const network = "rvn-test";
-  const UTXOs = testData.debug.rvnUTXOs;
+test("Verify sign XNA transaction", () => {
+  const testData = require("./mock/test_xna_transaction.json");
+  const network = "xna-test";
+  const UTXOs = testData.debug.xnaUTXOs;
   const privateKeys = testData.debug.privateKeys;
   const rawUnsignedTransaction = testData.debug.rawUnsignedTransaction;
 
@@ -20,8 +20,8 @@ test("Verify sign RVN transaction", () => {
 });
 test("Verify sign ASSET transaction", () => {
   const testData = require("./mock/test_asset_transaction.json");
-  const network = "rvn-test";
-  const UTXOs = testData.debug.rvnUTXOs.concat(testData.debug.assetUTXOs);
+  const network = "xna-test";
+  const UTXOs = testData.debug.xnaUTXOs.concat(testData.debug.assetUTXOs);
 
   const privateKeys = testData.debug.privateKeys;
   const rawUnsignedTransaction = testData.debug.rawUnsignedTransaction;

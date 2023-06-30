@@ -1,7 +1,7 @@
 {
   "transactionId": "48b1d374ae777db2d4cb1568fb7370df412b38cba6d50fef4dfb4571e4bf03be",
   "debug": {
-    "assetName": "RVN",
+    "assetName": "XNA",
     "assetUTXOs": [],
     "fee": 0.02,
     "inputs": [
@@ -15,11 +15,11 @@
       "mhBKhj5FxzBu1h8U6pSB16pwmjP7xo4ehG": 100,
       "mrnkTamyccjSWrku5Emnnbf7vQcgAL1Rj1": 89969.59
     },
-    "rvnChangeAmount": 89969.59,
-    "rvnUTXOs": [
+    "xnaChangeAmount": 89969.59,
+    "xnaUTXOs": [
       {
         "address": "mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA",
-        "assetName": "RVN",
+        "assetName": "XNA",
         "txid": "ae507c00fa12c0e68d407c609a2475bcd08cdf25933738c3e07e777816c35f0d",
         "outputIndex": 1,
         "script": "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac",
@@ -27,8 +27,8 @@
         "height": 941250
       }
     ],
-    "unspentRVNAmount": "90 069,61",
-    "rvnAmount": 0,
+    "unspentXNAAmount": "90 069,61",
+    "xnaAmount": 0,
     "rawUnsignedTransaction": "02000000010d5fc31678777ee0c338379325df8cd0bc75249a607c408de6c012fa007c50ae0100000000ffffffff0200e40b54020000001976a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88acc0958bc42e0800001976a9147ba628b84127e132b1352022b2bb58eaeaed340888ac00000000",
     "privateKeys": {
       "mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA": "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW"

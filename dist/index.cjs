@@ -19,20 +19,20 @@ var $80bd448eb6ea085b$require$Buffer = $g5Y9E$buffer.Buffer;
 
 function $80bd448eb6ea085b$export$c5552dfdbc7cec71(network, rawTransactionHex, UTXOs, privateKeys) {
     const networkMapper = {
-        rvn: (0, $g5Y9E$hyperbitjschains.chains).rvn.main,
-        "rvn-test": (0, $g5Y9E$hyperbitjschains.chains).rvn.test,
+        xna: (0, $g5Y9E$hyperbitjschains.chains).xna.main,
+        "xna-test": (0, $g5Y9E$hyperbitjschains.chains).xna.test,
         evr: (0, $g5Y9E$hyperbitjschains.chains).evr.main,
         "evr-test": (0, $g5Y9E$hyperbitjschains.chains).evr.test
     };
     const coin = networkMapper[network];
-    if (!coin) throw new Error("Validation error, first argument network must be rvn, rvn-test, evr or evr-test");
+    if (!coin) throw new Error("Validation error, first argument network must be xna, xna-test, evr or evr-test");
     //@ts-ignore
-    const RAVENCOIN = (0, $g5Y9E$hyperbitjschains.toBitcoinJS)(coin);
+    const NEURAI = (0, $g5Y9E$hyperbitjschains.toBitcoinJS)(coin);
     const tx = $g5Y9E$bitcoinjslib.Transaction.fromHex(rawTransactionHex);
-    const txb = $g5Y9E$bitcoinjslib.TransactionBuilder.fromTransaction(tx, RAVENCOIN);
+    const txb = $g5Y9E$bitcoinjslib.TransactionBuilder.fromTransaction(tx, NEURAI);
     function getKeyPairByAddress(address) {
         const wif = privateKeys[address];
-        const keyPair = $g5Y9E$bitcoinjslib.ECPair.fromWIF(wif, RAVENCOIN);
+        const keyPair = $g5Y9E$bitcoinjslib.ECPair.fromWIF(wif, NEURAI);
         return keyPair;
     }
     function getUTXO(transactionId, index) {
