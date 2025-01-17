@@ -8,7 +8,7 @@ interface IUTXO {
   outputIndex: number;
   script: string;
   satoshis: number;
-  height: number;
+  height?: number;
   value: number;
 }
 

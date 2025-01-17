@@ -5,7 +5,7 @@ interface IUTXO {
     outputIndex: number;
     script: string;
     satoshis: number;
-    height: number;
+    height?: number;
     value: number;
 }
 export function sign(network: "xna" | "xna-test" | "evr" | "evr-test", rawTransactionHex: string, UTXOs: Array<IUTXO>, privateKeys: any): string;
