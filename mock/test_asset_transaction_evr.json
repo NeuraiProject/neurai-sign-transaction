@@ -1,0 +1,56 @@
+{
+  "transactionId": "325dd7b2d00fa3a2ccbb73342539d8d9918b5d868273bafa165de8d750de1b56",
+  "debug": {
+    "amount": 1,
+    "assetName": "ANON",
+    "fee": 0.0211689140625,
+    "inputs": [
+      {
+        "address": "EJMeZoMJu19TojKbZtqcCjNDQXWncr5Zpp",
+        "txid": "75315a61346843f07f882134ed72e438912c502b1939957f4a6f465101d6f845",
+        "vout": 1
+      },
+      {
+        "address": "EJMeZoMJu19TojKbZtqcCjNDQXWncr5Zpp",
+        "txid": "a64f5d5baa1df47314eba7e704df7fc78dcf2035d4c9aae5fcde110fb084d847",
+        "vout": 0
+      }
+    ],
+    "outputs": {
+      "EMcpW8E79LKeS8UR1HndY8q36u7vajQoLY": 0.98,
+      "Efyk4jkGd1voMKwcd5mMuzty5X4hWcX5pY": {
+        "transfer": {
+          "ANON": 1
+        }
+      }
+    },
+    "privateKeys": {
+      "EJMeZoMJu19TojKbZtqcCjNDQXWncr5Zpp": "L1whTf8gGKnuiWhT9Nx4sLgVE6U8wSvctVUnZGXnhvr26acMQcaK"
+    },
+    "rawUnsignedTransaction": "020000000245f8d60151466f4a7f9539192b502c9138e472ed3421887ff0436834615a31750100000000ffffffff47d884b00f11defce5aac9d43520cf8dc77fdf04e7a7eb1473f41daa5b5d4fa60000000000ffffffff02805cd705000000001976a91430f7916f2ef2ecd56cc5b06a1a4f95dadfdbba8b88ac00000000000000002d76a914fa5edcecd4d0b17752fd06ca4d5a5afc4ade50ee88acc0116576727404414e4f4e00e1f505000000007500000000",
+    "xnaChangeAmount": 0.98,
+    "xnaAmount": 0.0211689140625,
+    "signedTransaction": "020000000245f8d60151466f4a7f9539192b502c9138e472ed3421887ff0436834615a3175010000006b483045022100ffc9f67c9dd20f8247ebc626f107eeb58fa80ce7744011936c5457116ec6e89902200b2d264deca5cc0e8de7bd2b0855ec656ab4d5a552604c402abe3c08633d5d7201210340a04f2229289d781c5884525b142dcf4a067b216f3323e6e275920745cba0f5ffffffff47d884b00f11defce5aac9d43520cf8dc77fdf04e7a7eb1473f41daa5b5d4fa6000000006b4830450221009e2d462395cca8d5a5872a09d1a5a008664c96ebb0c55cedb97d730cc4059c9a02206c30d3a28b4c0e4d9e046c1638d9d8bcf7a03fc8cc3154330518dd6f2a4b845901210340a04f2229289d781c5884525b142dcf4a067b216f3323e6e275920745cba0f5ffffffff02805cd705000000001976a91430f7916f2ef2ecd56cc5b06a1a4f95dadfdbba8b88ac00000000000000002d76a914fa5edcecd4d0b17752fd06ca4d5a5afc4ade50ee88acc0116576727404414e4f4e00e1f505000000007500000000",
+    "UTXOs": [
+      {
+        "address": "EJMeZoMJu19TojKbZtqcCjNDQXWncr5Zpp",
+        "assetName": "ANON",
+        "txid": "75315a61346843f07f882134ed72e438912c502b1939957f4a6f465101d6f845",
+        "outputIndex": 1,
+        "script": "76a9140d30a818f0e15f2afc1c1b44c902f078d8e353df88acc0116576727404414e4f4e00e1f5050000000075",
+        "satoshis": 100000000,
+        "height": 1289578
+      },
+      {
+        "address": "EJMeZoMJu19TojKbZtqcCjNDQXWncr5Zpp",
+        "assetName": "EVR",
+        "txid": "a64f5d5baa1df47314eba7e704df7fc78dcf2035d4c9aae5fcde110fb084d847",
+        "outputIndex": 0,
+        "script": "76a9140d30a818f0e15f2afc1c1b44c902f078d8e353df88ac",
+        "satoshis": 100000000,
+        "height": 1289578
+      }
+    ],
+    "walletMempool": []
+  }
+}
