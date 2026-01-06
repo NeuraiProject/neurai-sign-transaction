@@ -1,7 +1,6 @@
 var $g5Y9E$bitcoinjslib = require("bitcoinjs-lib");
 var $g5Y9E$ecpair = require("ecpair");
 var $g5Y9E$bitcoinerlabsecp256k1 = require("@bitcoinerlab/secp256k1");
-var $g5Y9E$hyperbitjschains = require("@hyperbitjs/chains");
 
 
 function $parcel$interopDefault(a) {
@@ -23,18 +22,194 @@ $parcel$export(module.exports, "default", () => $80bd448eb6ea085b$export$2e2bcd8
 
 
 
+var $af3d93861d966625$exports = {};
+/**
+ * Neurai (XNA) chain configuration data
+ * This replaces the dependency on @hyperbitjs/chains with only the data needed for Neurai
+ */ const $af3d93861d966625$var$xna = {
+    mainnet: {
+        name: "Neurai",
+        unit: "XNA",
+        symbol: "xna",
+        decimalPlaces: 100000000,
+        messagePrefix: "Neurai Signed Message:\n",
+        confirmations: 6,
+        website: "https://neurai.org/",
+        projectUrl: "https://github.com/NeuraiProject",
+        id: "94C49B3B-2C88-4408-B566-3D277C596778",
+        network: "mainnet",
+        hashGenesisBlock: "00000044d33c0c0ba019be5c0249730424a69cb4c222153322f68c6104484806",
+        port: 19000,
+        portRpc: 19001,
+        protocol: {
+            magic: 1381320014
+        },
+        seedsDns: [
+            "seed1.neurai.org",
+            "seed2.neurai.org",
+            "neurai-ipv4.neuraiexplorer.com"
+        ],
+        versions: {
+            bip32: {
+                private: 76066276,
+                public: 76067358
+            },
+            bip44: 1900,
+            private: 128,
+            public: 53,
+            scripthash: 117
+        }
+    },
+    testnet: {
+        name: "Neurai",
+        unit: "XNA",
+        symbol: "xna",
+        decimalPlaces: 100000000,
+        messagePrefix: "Neurai Signed Message:\n",
+        confirmations: 6,
+        website: "https://neurai.org/",
+        projectUrl: "https://github.com/NeuraiProject",
+        id: "1EB2ACBA-E8E0-4970-BB20-37DA4B70F6A6",
+        network: "testnet",
+        hashGenesisBlock: "0000006af8b8297448605b0283473ec712f9768f81cc7eae6269b875dee3b0cf",
+        port: 19100,
+        portRpc: 19101,
+        protocol: {
+            magic: 1313166674
+        },
+        seedsDns: [
+            "testnet1.neuracrypt.org",
+            "testnet2.neuracrypt.org",
+            "testnet3.neuracrypt.org"
+        ],
+        versions: {
+            bip32: {
+                private: 70615956,
+                public: 70617039
+            },
+            bip44: 1,
+            private: 239,
+            public: 127,
+            scripthash: 196
+        }
+    }
+};
+const $af3d93861d966625$var$chains = {
+    xna: $af3d93861d966625$var$xna
+};
+$af3d93861d966625$exports = {
+    xna: $af3d93861d966625$var$xna,
+    chains: $af3d93861d966625$var$chains
+};
 
+
+var $80bd448eb6ea085b$require$xna = $af3d93861d966625$exports.xna;
+var $f755b72afc69c754$exports = {};
+/**
+ * Neurai Legacy (XNA-LEGACY) chain configuration data
+ * This replaces the dependency on @hyperbitjs/chains with only the data needed for Neurai Legacy
+ */ const $f755b72afc69c754$var$xnaLegacy = {
+    mainnet: {
+        name: "Neurai",
+        unit: "XNA",
+        symbol: "xna",
+        decimalPlaces: 100000000,
+        messagePrefix: "Neurai Signed Message:\n",
+        confirmations: 6,
+        website: "https://neurai.org/",
+        projectUrl: "https://github.com/NeuraiProject",
+        id: "94C49B3B-2C88-4408-B566-3D277C596778",
+        network: "mainnet",
+        hashGenesisBlock: "00000044d33c0c0ba019be5c0249730424a69cb4c222153322f68c6104484806",
+        port: 19000,
+        portRpc: 19001,
+        protocol: {
+            magic: 1381320014
+        },
+        seedsDns: [
+            "seed1.neurai.org",
+            "seed2.neurai.org",
+            "neurai-ipv4.neuraiexplorer.com"
+        ],
+        versions: {
+            bip32: {
+                private: 76066276,
+                public: 76067358
+            },
+            bip44: 0,
+            private: 128,
+            public: 53,
+            scripthash: 117
+        }
+    },
+    testnet: {
+        name: "Neurai",
+        unit: "XNA",
+        symbol: "xna",
+        decimalPlaces: 100000000,
+        messagePrefix: "Neurai Signed Message:\n",
+        confirmations: 6,
+        website: "https://neurai.org/",
+        projectUrl: "https://github.com/NeuraiProject",
+        id: "1EB2ACBA-E8E0-4970-BB20-37DA4B70F6A6",
+        network: "testnet",
+        hashGenesisBlock: "0000006af8b8297448605b0283473ec712f9768f81cc7eae6269b875dee3b0cf",
+        port: 19100,
+        portRpc: 19101,
+        protocol: {
+            magic: 1313166674
+        },
+        seedsDns: [
+            "testnet1.neuracrypt.org",
+            "testnet2.neuracrypt.org",
+            "testnet3.neuracrypt.org"
+        ],
+        versions: {
+            bip32: {
+                private: 70615956,
+                public: 70617039
+            },
+            bip44: 1,
+            private: 239,
+            public: 127,
+            scripthash: 196
+        }
+    }
+};
+const $f755b72afc69c754$var$chains = {
+    "xna-legacy": $f755b72afc69c754$var$xnaLegacy
+};
+$f755b72afc69c754$exports = {
+    xnaLegacy: $f755b72afc69c754$var$xnaLegacy,
+    chains: $f755b72afc69c754$var$chains
+};
+
+
+var $80bd448eb6ea085b$require$xnaLegacy = $f755b72afc69c754$exports.xnaLegacy;
+function $80bd448eb6ea085b$var$toBitcoinJS(network) {
+    return {
+        messagePrefix: network.messagePrefix,
+        bech32: network.bech32 || "",
+        bip32: {
+            public: network.versions.bip32.public,
+            private: network.versions.bip32.private
+        },
+        pubKeyHash: network.versions.public,
+        scriptHash: network.versions.scripthash,
+        wif: network.versions.private
+    };
+}
 const $80bd448eb6ea085b$var$ECPair = (0, $g5Y9E$ecpair.ECPairFactory)((0, ($parcel$interopDefault($g5Y9E$bitcoinerlabsecp256k1))));
 function $80bd448eb6ea085b$export$c5552dfdbc7cec71(network, rawTransactionHex, UTXOs, privateKeys) {
     const networkMapper = {
-        xna: (0, $g5Y9E$hyperbitjschains.toBitcoinJS)((0, $g5Y9E$hyperbitjschains.xna).mainnet),
-        "xna-test": (0, $g5Y9E$hyperbitjschains.toBitcoinJS)((0, $g5Y9E$hyperbitjschains.xna).testnet),
-        evr: (0, $g5Y9E$hyperbitjschains.toBitcoinJS)((0, $g5Y9E$hyperbitjschains.evr).mainnet),
-        "evr-test": (0, $g5Y9E$hyperbitjschains.toBitcoinJS)((0, $g5Y9E$hyperbitjschains.evr).testnet)
+        xna: $80bd448eb6ea085b$var$toBitcoinJS($80bd448eb6ea085b$require$xna.mainnet),
+        "xna-test": $80bd448eb6ea085b$var$toBitcoinJS($80bd448eb6ea085b$require$xna.testnet),
+        "xna-legacy": $80bd448eb6ea085b$var$toBitcoinJS($80bd448eb6ea085b$require$xnaLegacy.mainnet),
+        "xna-legacy-test": $80bd448eb6ea085b$var$toBitcoinJS($80bd448eb6ea085b$require$xnaLegacy.testnet)
     };
     const COIN = networkMapper[network];
-    COIN.bech32 = COIN.bech32 || ""; //ECPair requires bech32 to not be undefined
     if (!COIN) throw new Error("Invalid network specified");
+    COIN.bech32 = COIN.bech32 || ""; //ECPair requires bech32 to not be undefined
     const COIN_NETWORK = COIN;
     const unsignedTx = $g5Y9E$bitcoinjslib.Transaction.fromHex(rawTransactionHex);
     const tx = new $g5Y9E$bitcoinjslib.Transaction();

@@ -2,7 +2,22 @@ import * as bitcoin from "bitcoinjs-lib";
 import { ECPairFactory } from "ecpair";
 import ecc from "@bitcoinerlab/secp256k1";
 
-import { xna, evr, toBitcoinJS, MainNet, TestNet } from "@hyperbitjs/chains";
+const { xna } = require("./coins/xna");
+const { xnaLegacy } = require("./coins/xna-legacy");
+
+function toBitcoinJS(network: any): bitcoin.Network {
+  return {
+    messagePrefix: network.messagePrefix,
+    bech32: network.bech32 || "",
+    bip32: {
+      public: network.versions.bip32.public,
+      private: network.versions.bip32.private,
+    },
+    pubKeyHash: network.versions.public,
+    scriptHash: network.versions.scripthash,
+    wif: network.versions.private,
+  };
+}
 
 const ECPair = ECPairFactory(ecc);
 
@@ -18,21 +33,21 @@ interface IUTXO {
 }
 
 export function sign(
-  network: "xna" | "xna-test" | "evr" | "evr-test",
+  network: "xna" | "xna-test" | "xna-legacy" | "xna-legacy-test",
   rawTransactionHex: string,
   UTXOs: Array<IUTXO>,
   privateKeys: Record<string, string>
 ): string {
   const networkMapper = {
-    xna: toBitcoinJS(xna.mainnet as MainNet),
-    "xna-test": toBitcoinJS(xna.testnet as TestNet),
-    evr: toBitcoinJS(evr.mainnet as MainNet),
-    "evr-test": toBitcoinJS(evr.testnet as TestNet),
+    xna: toBitcoinJS(xna.mainnet),
+    "xna-test": toBitcoinJS(xna.testnet),
+    "xna-legacy": toBitcoinJS(xnaLegacy.mainnet),
+    "xna-legacy-test": toBitcoinJS(xnaLegacy.testnet),
   };
 
   const COIN = networkMapper[network];
-  COIN.bech32 = COIN.bech32 || ""; //ECPair requires bech32 to not be undefined
   if (!COIN) throw new Error("Invalid network specified");
+  COIN.bech32 = COIN.bech32 || ""; //ECPair requires bech32 to not be undefined
 
   const COIN_NETWORK = COIN as bitcoin.Network;
 

@@ -9,7 +9,7 @@ The sole purpose of this project is to enable us to
 ## How to use
 
 The sign method has four arguments
-1) The network "string", can be "xna" | "xna-test" | "evr" | "evr-test",
+1) The network "string", can be "xna" | "xna-test" | "xna-legacy" | "xna-legacy-test",
 2) The raw transaction (in hex)
 3) An array of UTXO objects to use
 4) Private keys. An object with "address" as key and "WIF" as value
