@@ -3,16 +3,37 @@
 Signs a Neurai transaction
 
 The sole purpose of this project is to enable us to
-"Sign XNA or asset transfer transactions in pure JavaScript"
+"Sign XNA, asset and PQ-input transfer transactions in pure JavaScript"
  
 
 ## How to use
 
 The sign method has four arguments
-1) The network "string", can be "xna" | "xna-test" | "xna-legacy" | "xna-legacy-test",
+1) The network "string", can be "xna" | "xna-test" | "xna-legacy" | "xna-legacy-test" | "xna-pq" | "xna-pq-test",
 2) The raw transaction (in hex)
 3) An array of UTXO objects to use
-4) Private keys. An object with "address" as key and "WIF" as value
+4) Private keys. An object with "address" as key.
+
+This library signs an already-built raw transaction. It does not build the raw transaction for you.
+
+For legacy inputs, the value can be the WIF string as before, or an object like `{ WIF }`.
+
+For PQ inputs, the value can be any of these:
+- a 32-byte seed in hex (`seedKey` from `@neuraiproject/neurai-key`)
+- a 2560-byte ML-DSA-44 secret key in hex (`privateKey` / `secretKey`)
+- a 3872-byte exported keydata blob in hex (`secret + public`)
+- an object like `{ seedKey }`, `{ privateKey }` or `{ secretKey, publicKey }`
+
+Mixed transactions are supported, so the same `privateKeys` object can contain legacy WIF entries and PQ entries at the same time.
+
+For PQ inputs, the referenced UTXO must include a valid amount in `satoshis` or `value`, because the witness sighash includes the prevout amount.
+
+PQ inputs are signed with witness data using the Neurai node rules:
+- prevout `OP_1 <20-byte-program>` or `OP_1 <20-byte-program> OP_XNA_ASSET ... OP_DROP`
+- `hashForWitnessV0` including the prevout amount
+- witness stack `[ml-dsa44-signature+sighashType, 0x05||pqPublicKey]`
+
+`xna-pq` and `xna-pq-test` use the PQ bech32 HRPs (`nq` / `tnq`) and PQ bip32 settings.
 
 returns a signed transaction (hex), after that it is up to you to publish it on the network
 ```
@@ -51,5 +72,14 @@ const signed = Signer.sign("xna", raw, UTXOs, privateKeys);
 console.log(signed);
 
 
+```
+
+Example PQ key input:
+```
+const privateKeys = {
+  tnq1yourpqaddresshere: {
+    seedKey: "aabbcc...32-byte-seed-in-hex",
+  },
+};
 ```
 
