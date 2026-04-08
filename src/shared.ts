@@ -1,11 +1,11 @@
 import * as bitcoin from "bitcoinjs-lib";
+import { Buffer } from "buffer";
 import { ECPairFactory } from "ecpair";
 import * as ecc from "@bitcoinerlab/secp256k1";
 import { ml_dsa44 } from "@noble/post-quantum/ml-dsa.js";
-
-const { xna } = require("./coins/xna");
-const { xnaLegacy } = require("./coins/xna-legacy");
-const { xnaPQ } = require("./coins/xna-pq");
+import { xna } from "./coins/xna";
+import { xnaLegacy } from "./coins/xna-legacy";
+import { xnaPQ } from "./coins/xna-pq";
 
 const ECPair = ECPairFactory(ecc);
 
@@ -18,7 +18,7 @@ const PQ_KEYDATA_LENGTH = 3872;
 const PQ_SEED_LENGTH = 32;
 const PQ_PUBLIC_KEY_HEADER = Buffer.from([0x05]);
 
-type SupportedNetwork =
+export type SupportedNetwork =
   | "xna"
   | "xna-test"
   | "xna-legacy"
@@ -26,9 +26,9 @@ type SupportedNetwork =
   | "xna-pq"
   | "xna-pq-test";
 
-type PrivateKeyInput = string | IPQPrivateKeyInput;
+export type PrivateKeyInput = string | IPQPrivateKeyInput;
 
-interface IPQPrivateKeyInput {
+export interface IPQPrivateKeyInput {
   WIF?: string;
   seedKey?: string;
   privateKey?: string;
@@ -42,7 +42,40 @@ interface IPQSigningMaterial {
   serializedPublicKey: Buffer;
 }
 
-function toBitcoinJS(network: any): bitcoin.Network {
+type ChainNetwork = {
+  messagePrefix: string;
+  bech32?: string;
+  versions: {
+    bip32: {
+      public: number;
+      private: number;
+    };
+    public: number;
+    private: number;
+    scripthash: number;
+  };
+};
+
+type PQChainNetwork = {
+  hrp: string;
+  bip32: {
+    public: number;
+    private: number;
+  };
+};
+
+export interface IUTXO {
+  address: string;
+  assetName: string;
+  txid: string;
+  outputIndex: number;
+  script: string;
+  satoshis: number;
+  height?: number;
+  value: number;
+}
+
+function toBitcoinJS(network: ChainNetwork): bitcoin.Network {
   return {
     messagePrefix: network.messagePrefix,
     bech32: network.bech32 || "",
@@ -56,7 +89,10 @@ function toBitcoinJS(network: any): bitcoin.Network {
   };
 }
 
-function toBitcoinJSPQ(baseNetwork: any, pqNetwork: any): bitcoin.Network {
+function toBitcoinJSPQ(
+  baseNetwork: ChainNetwork,
+  pqNetwork: PQChainNetwork
+): bitcoin.Network {
   return {
     ...toBitcoinJS(baseNetwork),
     bech32: pqNetwork.hrp,
@@ -65,17 +101,6 @@ function toBitcoinJSPQ(baseNetwork: any, pqNetwork: any): bitcoin.Network {
       private: pqNetwork.bip32.private,
     },
   };
-}
-
-interface IUTXO {
-  address: string;
-  assetName: string;
-  txid: string;
-  outputIndex: number;
-  script: string;
-  satoshis: number;
-  height?: number;
-  value: number;
 }
 
 function isHexString(value: string): boolean {
@@ -231,13 +256,27 @@ function getPQMaterialFromEntry(
   );
 }
 
+function getUTXOKey(txid: string, outputIndex: number): string {
+  return `${txid}:${outputIndex}`;
+}
+
+function getInputReference(input: { hash: Uint8Array; index: number }): {
+  txid: string;
+  vout: number;
+} {
+  return {
+    txid: Buffer.from(input.hash).reverse().toString("hex"),
+    vout: input.index,
+  };
+}
+
 export function sign(
   network: SupportedNetwork,
   rawTransactionHex: string,
   UTXOs: Array<IUTXO>,
   privateKeys: Record<string, PrivateKeyInput>
 ): string {
-  const networkMapper = {
+  const networkMapper: Record<SupportedNetwork, bitcoin.Network> = {
     xna: toBitcoinJS(xna.mainnet),
     "xna-test": toBitcoinJS(xna.testnet),
     "xna-legacy": toBitcoinJS(xnaLegacy.mainnet),
@@ -248,9 +287,7 @@ export function sign(
 
   const COIN = networkMapper[network];
   if (!COIN) throw new Error("Invalid network specified");
-  COIN.bech32 = COIN.bech32 || ""; //ECPair requires bech32 to not be undefined
-
-  const COIN_NETWORK = COIN as bitcoin.Network;
+  COIN.bech32 = COIN.bech32 || "";
 
   const unsignedTx = bitcoin.Transaction.fromHex(rawTransactionHex);
   const tx = new bitcoin.Transaction();
@@ -259,6 +296,9 @@ export function sign(
 
   const legacyKeyPairCache = new Map<string, ReturnType<typeof ECPair.fromWIF>>();
   const pqMaterialCache = new Map<string, IPQSigningMaterial>();
+  const utxoMap = new Map<string, IUTXO>(
+    UTXOs.map((utxo) => [getUTXOKey(utxo.txid, utxo.outputIndex), utxo])
+  );
 
   function getKeyPairByAddress(address: string) {
     const cached = legacyKeyPairCache.get(address);
@@ -274,14 +314,9 @@ export function sign(
       throw new Error(`Missing WIF private key for address: ${address}`);
     }
 
-    try {
-      const keyPair = ECPair.fromWIF(wif, COIN_NETWORK);
-      legacyKeyPairCache.set(address, keyPair);
-      return keyPair;
-    } catch (e) {
-      console.error("Failed to parse WIF:", e);
-      throw e;
-    }
+    const keyPair = ECPair.fromWIF(wif, COIN);
+    legacyKeyPairCache.set(address, keyPair);
+    return keyPair;
   }
 
   function getPQMaterialByAddress(address: string): IPQSigningMaterial {
@@ -299,14 +334,12 @@ export function sign(
   }
 
   function getUTXO(txid: string, vout: number): IUTXO | undefined {
-    return UTXOs.find((u) => u.txid === txid && u.outputIndex === vout);
+    return utxoMap.get(getUTXOKey(txid, vout));
   }
 
-  // Add inputs
   for (let i = 0; i < unsignedTx.ins.length; i++) {
     const input = unsignedTx.ins[i];
-    const txid = Buffer.from(input.hash).reverse().toString("hex");
-    const vout = input.index;
+    const { txid, vout } = getInputReference(input);
 
     const utxo = getUTXO(txid, vout);
     if (!utxo) throw new Error(`Missing UTXO for input ${txid}:${vout}`);
@@ -317,16 +350,13 @@ export function sign(
     }
   }
 
-  // Add outputs
   for (const out of unsignedTx.outs) {
     tx.addOutput(out.script, out.value);
   }
 
-  // Sign each input
   for (let i = 0; i < tx.ins.length; i++) {
     const input = tx.ins[i];
-    const txid = Buffer.from(input.hash).reverse().toString("hex");
-    const vout = input.index;
+    const { txid, vout } = getInputReference(input);
 
     const utxo = getUTXO(txid, vout);
     if (!utxo) throw new Error(`Missing UTXO for input ${txid}:${vout}`);
@@ -342,21 +372,13 @@ export function sign(
     if (isPQScript(scriptPubKey)) {
       const pqMaterial = getPQMaterialByAddress(utxo.address);
       const scriptCode = getPQScriptCode(scriptPubKey);
-      const sighash = tx.hashForWitnessV0(
-        i,
-        scriptCode,
-        getUTXOAmount(utxo),
-        HASH_TYPE
-      );
+      const sighash = tx.hashForWitnessV0(i, scriptCode, getUTXOAmount(utxo), HASH_TYPE);
       const signature = Buffer.from(
         ml_dsa44.sign(new Uint8Array(sighash), new Uint8Array(pqMaterial.secretKey), {
           extraEntropy: false,
         })
       );
-      const signatureWithHashType = Buffer.concat([
-        signature,
-        Buffer.from([HASH_TYPE]),
-      ]);
+      const signatureWithHashType = Buffer.concat([signature, Buffer.from([HASH_TYPE])]);
 
       tx.setInputScript(i, Buffer.alloc(0));
       tx.setWitness(i, [signatureWithHashType, pqMaterial.serializedPublicKey]);
@@ -364,12 +386,7 @@ export function sign(
     }
 
     const keyPair = getKeyPairByAddress(utxo.address);
-
-    const sighash = tx.hashForSignature(
-      i,
-      scriptPubKey,
-      HASH_TYPE
-    );
+    const sighash = tx.hashForSignature(i, scriptPubKey, HASH_TYPE);
     const rawSignature = keyPair.sign(sighash);
 
     const signatureWithHashType = bitcoin.script.signature.encode(
@@ -377,10 +394,9 @@ export function sign(
       HASH_TYPE
     );
 
-    const pubKey = keyPair.publicKey;
     const scriptSig = bitcoin.script.compile([
       signatureWithHashType,
-      Buffer.from(pubKey),
+      Buffer.from(keyPair.publicKey),
     ]);
 
     tx.setInputScript(i, scriptSig);
@@ -389,6 +405,8 @@ export function sign(
   return tx.toHex();
 }
 
-export default {
+const Signer = {
   sign,
 };
+
+export default Signer;

@@ -21252,4 +21252,4 @@ const Signer = {
 };
 
 export { Signer as default, sign };
-//# sourceMappingURL=index.mjs.map
+//# sourceMappingURL=browser.js.map

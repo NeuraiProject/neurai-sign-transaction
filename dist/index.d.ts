@@ -17,8 +17,10 @@ interface IUTXO {
     height?: number;
     value: number;
 }
-export declare function sign(network: SupportedNetwork, rawTransactionHex: string, UTXOs: Array<IUTXO>, privateKeys: Record<string, PrivateKeyInput>): string;
-declare const _default: {
+declare function sign(network: SupportedNetwork, rawTransactionHex: string, UTXOs: Array<IUTXO>, privateKeys: Record<string, PrivateKeyInput>): string;
+declare const Signer: {
     sign: typeof sign;
 };
-export default _default;
+
+export { Signer as default, sign };
+export type { IPQPrivateKeyInput, IUTXO, PrivateKeyInput, SupportedNetwork };

@@ -5,6 +5,15 @@ Signs a Neurai transaction
 The sole purpose of this project is to enable us to
 "Sign XNA, asset and PQ-input transfer transactions in pure JavaScript"
  
+## Package outputs
+
+This package now publishes explicit entry points for each runtime:
+
+- `@neuraiproject/neurai-sign-transaction` -> main ESM/CJS library entry
+- `@neuraiproject/neurai-sign-transaction/browser` -> browser-focused ESM bundle
+- `@neuraiproject/neurai-sign-transaction/global` -> IIFE bundle for `<script>`
+
+The preferred consumption path is ESM. The global bundle is kept only for legacy HTML usage.
 
 ## How to use
 
@@ -83,3 +92,24 @@ const privateKeys = {
 };
 ```
 
+Browser ESM usage:
+
+```js
+import Signer from "@neuraiproject/neurai-sign-transaction/browser";
+
+const signed = Signer.sign(network, rawTransactionHex, utxos, privateKeys);
+```
+
+Legacy global usage:
+
+```html
+<script src="./dist/NeuraiSignTransaction.global.js"></script>
+<script>
+  const signed = globalThis.NeuraiSignTransaction.sign(
+    network,
+    rawTransactionHex,
+    utxos,
+    privateKeys
+  );
+</script>
+```

@@ -1,5 +1,8 @@
 const Signer = require("./dist/index.cjs");
 const bitcoin = require("bitcoinjs-lib");
+const fs = require("fs");
+const path = require("path");
+const vm = require("vm");
 const pqFixtures = require("./mock/test_pq_fixtures.json");
 
 test("Verify XNA sign transaction", () => {
@@ -117,3 +120,46 @@ test("Verify XNA sign ASSET transaction", () => {
   expect(asdf).toBe(expectedResult);
 });
 
+test("Verify browser ESM entry exports sign", () => {
+  const browserBundle = fs.readFileSync(path.join(__dirname, "dist/browser.js"), "utf8");
+
+  expect(browserBundle).toContain("const Signer = {");
+  expect(browserBundle).toContain("export { Signer as default, sign };");
+});
+
+test("Verify global bundle exposes NeuraiSignTransaction", () => {
+  const bundle = fs.readFileSync(
+    path.join(__dirname, "dist/NeuraiSignTransaction.global.js"),
+    "utf8"
+  );
+  const context = {
+    globalThis: {},
+    window: {},
+    self: {},
+    console,
+    Uint8Array,
+    ArrayBuffer,
+    DataView,
+    TextEncoder,
+    TextDecoder,
+    crypto: globalThis.crypto,
+  };
+
+  vm.runInNewContext(bundle, context);
+
+  expect(context.globalThis.NeuraiSignTransaction).toBeDefined();
+  expect(typeof context.globalThis.NeuraiSignTransaction.sign).toBe("function");
+});
+
+test("Verify browser build does not contain Node require residuals", () => {
+  const browserBundle = fs.readFileSync(path.join(__dirname, "dist/browser.js"), "utf8");
+  const browserBundleWithoutComments = browserBundle
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+
+  expect(browserBundleWithoutComments).not.toMatch(/\brequire\((['"])(buffer|crypto|fs|path|stream)\1\)/);
+  expect(browserBundle.includes("node:crypto")).toBe(false);
+  expect(browserBundle.includes("node:fs")).toBe(false);
+  expect(browserBundle.includes("node:path")).toBe(false);
+  expect(browserBundle.includes("node:stream")).toBe(false);
+});
