@@ -36,6 +36,15 @@ export interface IPQPrivateKeyInput {
   publicKey?: string;
 }
 
+export interface ISignDebugEvent {
+  step: string;
+  [key: string]: unknown;
+}
+
+export interface ISignOptions {
+  debug?: boolean | ((event: ISignDebugEvent) => void);
+}
+
 interface IPQSigningMaterial {
   secretKey: Buffer;
   publicKey: Buffer;
@@ -270,11 +279,28 @@ function getInputReference(input: { hash: Uint8Array; index: number }): {
   };
 }
 
+function createDebugLogger(
+  debugOption?: ISignOptions["debug"]
+): (event: ISignDebugEvent) => void {
+  if (debugOption === false) {
+    return () => {};
+  }
+
+  if (typeof debugOption === "function") {
+    return debugOption;
+  }
+
+  return (event) => {
+    console.log("[pq-sign]", event);
+  };
+}
+
 export function sign(
   network: SupportedNetwork,
   rawTransactionHex: string,
   UTXOs: Array<IUTXO>,
-  privateKeys: Record<string, PrivateKeyInput>
+  privateKeys: Record<string, PrivateKeyInput>,
+  options?: ISignOptions
 ): string {
   const networkMapper: Record<SupportedNetwork, bitcoin.Network> = {
     xna: toBitcoinJS(xna.mainnet),
@@ -299,6 +325,11 @@ export function sign(
   const utxoMap = new Map<string, IUTXO>(
     UTXOs.map((utxo) => [getUTXOKey(utxo.txid, utxo.outputIndex), utxo])
   );
+  const debug = createDebugLogger(options?.debug);
+
+  function hasPrivateKeyForAddress(address: string): boolean {
+    return privateKeys[address] !== undefined;
+  }
 
   function getKeyPairByAddress(address: string) {
     const cached = legacyKeyPairCache.get(address);
@@ -339,11 +370,6 @@ export function sign(
 
   for (let i = 0; i < unsignedTx.ins.length; i++) {
     const input = unsignedTx.ins[i];
-    const { txid, vout } = getInputReference(input);
-
-    const utxo = getUTXO(txid, vout);
-    if (!utxo) throw new Error(`Missing UTXO for input ${txid}:${vout}`);
-
     tx.addInput(Buffer.from(input.hash), input.index, input.sequence, input.script);
     if (input.witness.length > 0) {
       tx.setWitness(i, input.witness);
@@ -359,17 +385,58 @@ export function sign(
     const { txid, vout } = getInputReference(input);
 
     const utxo = getUTXO(txid, vout);
-    if (!utxo) throw new Error(`Missing UTXO for input ${txid}:${vout}`);
+    debug({
+      step: "input",
+      i,
+      txid,
+      vout,
+      hasUtxo: !!utxo,
+      utxoAddress: utxo?.address ?? null,
+      utxoScript: utxo?.script ?? null,
+    });
+    if (!utxo) {
+      debug({
+        step: "skip-missing-utxo",
+        i,
+        txid,
+        vout,
+      });
+      continue;
+    }
 
     const scriptPubKey = Buffer.from(utxo.script, "hex");
+    const inputIsLegacy = isLegacyScript(scriptPubKey);
+    const inputIsPQ = isPQScript(scriptPubKey);
+    debug({
+      step: "script-type",
+      i,
+      isLegacy: inputIsLegacy,
+      isPQ: inputIsPQ,
+    });
 
-    if (!isLegacyScript(scriptPubKey) && !isPQScript(scriptPubKey)) {
+    if (!inputIsLegacy && !inputIsPQ) {
       throw new Error(
         `Unsupported prevout script for ${txid}:${vout}. Only legacy P2PKH and Neurai PQ witness v1 are supported`
       );
     }
 
-    if (isPQScript(scriptPubKey)) {
+    if (inputIsPQ) {
+      const hasPrivateKeyEntry = hasPrivateKeyForAddress(utxo.address);
+      debug({
+        step: "pq-material",
+        i,
+        address: utxo.address,
+        hasPrivateKeyEntry,
+      });
+      if (!hasPrivateKeyEntry) {
+        debug({
+          step: "skip-missing-private-key",
+          i,
+          address: utxo.address,
+        });
+        continue;
+      }
+
       const pqMaterial = getPQMaterialByAddress(utxo.address);
       const scriptCode = getPQScriptCode(scriptPubKey);
       const sighash = tx.hashForWitnessV0(i, scriptCode, getUTXOAmount(utxo), HASH_TYPE);
@@ -382,6 +449,22 @@ export function sign(
 
       tx.setInputScript(i, Buffer.alloc(0));
       tx.setWitness(i, [signatureWithHashType, pqMaterial.serializedPublicKey]);
+      debug({
+        step: "witness-set",
+        i,
+        witnessItems: tx.ins[i].witness?.length ?? 0,
+        witness0Len: tx.ins[i].witness?.[0]?.length ?? 0,
+        witness1Len: tx.ins[i].witness?.[1]?.length ?? 0,
+      });
+      continue;
+    }
+
+    if (!hasPrivateKeyForAddress(utxo.address)) {
+      debug({
+        step: "skip-missing-private-key",
+        i,
+        address: utxo.address,
+      });
       continue;
     }
 
@@ -401,6 +484,15 @@ export function sign(
 
     tx.setInputScript(i, scriptSig);
   }
+
+  debug({
+    step: "final-inputs",
+    inputs: tx.ins.map((input, i) => ({
+      i,
+      scriptLen: input.script?.length ?? 0,
+      witnessItems: input.witness?.length ?? 0,
+    })),
+  });
 
   return tx.toHex();
 }

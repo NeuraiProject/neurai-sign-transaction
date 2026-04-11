@@ -17,11 +17,14 @@ The preferred consumption path is ESM. The global bundle is kept only for legacy
 
 ## How to use
 
-The sign method has four arguments
+The sign method has four required arguments and one optional argument
 1) The network "string", can be "xna" | "xna-test" | "xna-legacy" | "xna-legacy-test" | "xna-pq" | "xna-pq-test",
 2) The raw transaction (in hex)
 3) An array of UTXO objects to use
 4) Private keys. An object with "address" as key.
+
+There is also an optional fifth argument for diagnostics:
+5) `{ debug }`, where `debug` can be `true` to emit console logs or a callback receiving structured events.
 
 This library signs an already-built raw transaction. It does not build the raw transaction for you.
 
@@ -34,6 +37,8 @@ For PQ inputs, the value can be any of these:
 - an object like `{ seedKey }`, `{ privateKey }` or `{ secretKey, publicKey }`
 
 Mixed transactions are supported, so the same `privateKeys` object can contain legacy WIF entries and PQ entries at the same time.
+
+The signer also supports partial signing flows. Inputs that do not have a matching UTXO in the provided `UTXOs` array, or do not have a matching key entry in `privateKeys`, are preserved as-is and skipped instead of aborting the whole signing process. This is required for mixed atomic swaps where another participant has already signed their own input.
 
 For PQ inputs, the referenced UTXO must include a valid amount in `satoshis` or `value`, because the witness sighash includes the prevout amount.
 
@@ -81,6 +86,16 @@ const signed = Signer.sign("xna", raw, UTXOs, privateKeys);
 console.log(signed);
 
 
+```
+
+Debug example:
+```js
+const events = [];
+const signed = Signer.sign(network, rawTransactionHex, utxos, privateKeys, {
+  debug: (event) => events.push(event),
+});
+
+console.log(events);
 ```
 
 Example PQ key input:

@@ -106,6 +106,102 @@ test("Verify mixed legacy and PQ asset transaction", () => {
   expect(pqWitness).toHaveLength(2);
   expect(pqWitness[1].toString("hex")).toBe(pq.serializedPublicKey);
 });
+
+test("Verify partial PQ signing preserves foreign legacy input", () => {
+  const pq = pqFixtures.mixed;
+  const partiallySignedTx = bitcoin.Transaction.fromHex(pq.signedTransaction);
+
+  partiallySignedTx.setWitness(1, []);
+
+  const signedHex = Signer.sign(
+    "xna-pq-test",
+    partiallySignedTx.toHex(),
+    [
+      {
+        address: "pq-asset-input",
+        assetName: "BUTTER",
+        txid: "33".repeat(32),
+        outputIndex: 0,
+        script: pq.script,
+        satoshis: 200000,
+        value: 200000,
+      },
+    ],
+    {
+      "pq-asset-input": {
+        seedKey: pq.seedKey,
+      },
+    }
+  );
+
+  expect(signedHex).toBe(pq.signedTransaction);
+});
+
+test("Verify debug events expose PQ signing path", () => {
+  const pq = pqFixtures.mixed;
+  const partiallySignedTx = bitcoin.Transaction.fromHex(pq.signedTransaction);
+  const debugEvents = [];
+
+  partiallySignedTx.setWitness(1, []);
+
+  const signedHex = Signer.sign(
+    "xna-pq-test",
+    partiallySignedTx.toHex(),
+    [
+      {
+        address: "pq-asset-input",
+        assetName: "BUTTER",
+        txid: "33".repeat(32),
+        outputIndex: 0,
+        script: pq.script,
+        satoshis: 200000,
+        value: 200000,
+      },
+    ],
+    {
+      "pq-asset-input": {
+        seedKey: pq.seedKey,
+      },
+    },
+    {
+      debug: (event) => debugEvents.push(event),
+    }
+  );
+
+  expect(signedHex).toBe(pq.signedTransaction);
+  expect(debugEvents).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        step: "skip-missing-utxo",
+        i: 0,
+      }),
+      expect.objectContaining({
+        step: "script-type",
+        i: 1,
+        isPQ: true,
+      }),
+      expect.objectContaining({
+        step: "pq-material",
+        i: 1,
+        address: "pq-asset-input",
+        hasPrivateKeyEntry: true,
+      }),
+      expect.objectContaining({
+        step: "witness-set",
+        i: 1,
+        witnessItems: 2,
+      }),
+      expect.objectContaining({
+        step: "final-inputs",
+        inputs: expect.arrayContaining([
+          expect.objectContaining({ i: 0, witnessItems: 0 }),
+          expect.objectContaining({ i: 1, witnessItems: 2 }),
+        ]),
+      }),
+    ])
+  );
+});
+
 test("Verify XNA sign ASSET transaction", () => {
   const testData = require("./mock/test_asset_transaction.json");
   const network = "xna-test";

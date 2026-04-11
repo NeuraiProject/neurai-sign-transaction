@@ -7,6 +7,13 @@ interface IPQPrivateKeyInput {
     secretKey?: string;
     publicKey?: string;
 }
+interface ISignDebugEvent {
+    step: string;
+    [key: string]: unknown;
+}
+interface ISignOptions {
+    debug?: boolean | ((event: ISignDebugEvent) => void);
+}
 interface IUTXO {
     address: string;
     assetName: string;
@@ -17,10 +24,10 @@ interface IUTXO {
     height?: number;
     value: number;
 }
-declare function sign(network: SupportedNetwork, rawTransactionHex: string, UTXOs: Array<IUTXO>, privateKeys: Record<string, PrivateKeyInput>): string;
+declare function sign(network: SupportedNetwork, rawTransactionHex: string, UTXOs: Array<IUTXO>, privateKeys: Record<string, PrivateKeyInput>, options?: ISignOptions): string;
 declare const Signer: {
     sign: typeof sign;
 };
 
 export { Signer as default, sign };
-export type { IPQPrivateKeyInput, IUTXO, PrivateKeyInput, SupportedNetwork };
+export type { IPQPrivateKeyInput, ISignDebugEvent, ISignOptions, IUTXO, PrivateKeyInput, SupportedNetwork };
