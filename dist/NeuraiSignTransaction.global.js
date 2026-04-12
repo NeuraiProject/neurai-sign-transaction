@@ -21006,7 +21006,9 @@
 	const AUTHSCRIPT_PREFIX_LENGTH = 34;
 	const AUTHSCRIPT_TAG = "NeuraiAuthScript";
 	const AUTHSCRIPT_VERSION = 0x01;
+	const NOAUTH_TYPE = 0x00;
 	const PQ_AUTHSCRIPT_TYPE = 0x01;
+	const LEGACY_AUTHSCRIPT_TYPE = 0x02;
 	const PQ_PUBLIC_KEY_LENGTH = 1312;
 	const PQ_SECRET_KEY_LENGTH = 2560;
 	const PQ_KEYDATA_LENGTH = 3872;
@@ -21188,7 +21190,7 @@
 	    }
 	    throw new Error(`Missing PQ key material for address ${address}. Provide seedKey, privateKey or secretKey in hex`);
 	}
-	function getPQSpendTemplate(address, privateKeyEntry) {
+	function getAuthScriptSpendTemplate(address, privateKeyEntry) {
 	    if (typeof privateKeyEntry === "string") {
 	        return {
 	            authType: PQ_AUTHSCRIPT_TYPE,
@@ -21197,8 +21199,10 @@
 	        };
 	    }
 	    const authType = privateKeyEntry.authType ?? PQ_AUTHSCRIPT_TYPE;
-	    if (authType !== PQ_AUTHSCRIPT_TYPE) {
-	        throw new Error(`Unsupported authType ${authType} for PQ address ${address}. Only auth_type 0x01 is supported`);
+	    if (authType !== NOAUTH_TYPE &&
+	        authType !== PQ_AUTHSCRIPT_TYPE &&
+	        authType !== LEGACY_AUTHSCRIPT_TYPE) {
+	        throw new Error(`Unsupported authType 0x${authType.toString(16).padStart(2, "0")} for address ${address}. Supported: 0x00 (NoAuth), 0x01 (PQ), 0x02 (Legacy)`);
 	    }
 	    const witnessScript = privateKeyEntry.witnessScript
 	        ? bufferFromHex(privateKeyEntry.witnessScript, `AuthScript witnessScript for address ${address}`)
@@ -21210,14 +21214,32 @@
 	        functionalArgs,
 	    };
 	}
-	function getAuthScriptCommitment(authType, serializedPublicKey, witnessScript) {
-	    if (authType !== PQ_AUTHSCRIPT_TYPE) {
-	        throw new Error(`Unsupported authType ${authType}. Only auth_type 0x01 is supported`);
+	function getAuthScriptCommitment(authType, publicKey, witnessScript) {
+	    let authDescriptor;
+	    if (authType === NOAUTH_TYPE) {
+	        authDescriptor = bufferExports.Buffer.from([NOAUTH_TYPE]);
 	    }
-	    const authDescriptor = bufferExports.Buffer.concat([
-	        bufferExports.Buffer.from([authType]),
-	        hash160(serializedPublicKey),
-	    ]);
+	    else if (authType === PQ_AUTHSCRIPT_TYPE) {
+	        if (!publicKey) {
+	            throw new Error("PQ auth requires a public key");
+	        }
+	        authDescriptor = bufferExports.Buffer.concat([
+	            bufferExports.Buffer.from([PQ_AUTHSCRIPT_TYPE]),
+	            hash160(publicKey),
+	        ]);
+	    }
+	    else if (authType === LEGACY_AUTHSCRIPT_TYPE) {
+	        if (!publicKey) {
+	            throw new Error("Legacy auth requires a public key");
+	        }
+	        authDescriptor = bufferExports.Buffer.concat([
+	            bufferExports.Buffer.from([LEGACY_AUTHSCRIPT_TYPE]),
+	            hash160(publicKey),
+	        ]);
+	    }
+	    else {
+	        throw new Error(`Unsupported authType 0x${authType.toString(16).padStart(2, "0")}. Supported: 0x00 (NoAuth), 0x01 (PQ), 0x02 (Legacy)`);
+	    }
 	    const witnessScriptHash = sha256(witnessScript);
 	    const preimage = bufferExports.Buffer.concat([
 	        bufferExports.Buffer.from([AUTHSCRIPT_VERSION]),
@@ -21417,10 +21439,20 @@
 	            if (!privateKeyEntry) {
 	                throw new Error(`Missing private key for address: ${utxo.address}`);
 	            }
-	            const pqMaterial = getPQMaterialByAddress(utxo.address);
-	            const spendTemplate = getPQSpendTemplate(utxo.address, privateKeyEntry);
+	            const spendTemplate = getAuthScriptSpendTemplate(utxo.address, privateKeyEntry);
 	            const actualCommitment = getAuthScriptProgram(scriptPubKey);
-	            const expectedCommitment = getAuthScriptCommitment(spendTemplate.authType, pqMaterial.serializedPublicKey, spendTemplate.witnessScript);
+	            let expectedCommitment;
+	            if (spendTemplate.authType === NOAUTH_TYPE) {
+	                expectedCommitment = getAuthScriptCommitment(NOAUTH_TYPE, null, spendTemplate.witnessScript);
+	            }
+	            else if (spendTemplate.authType === PQ_AUTHSCRIPT_TYPE) {
+	                const pqMat = getPQMaterialByAddress(utxo.address);
+	                expectedCommitment = getAuthScriptCommitment(PQ_AUTHSCRIPT_TYPE, pqMat.serializedPublicKey, spendTemplate.witnessScript);
+	            }
+	            else {
+	                const kp = getKeyPairByAddress(utxo.address);
+	                expectedCommitment = getAuthScriptCommitment(LEGACY_AUTHSCRIPT_TYPE, bufferExports.Buffer.from(kp.publicKey), spendTemplate.witnessScript);
+	            }
 	            debug({
 	                step: "authscript-template",
 	                i,
@@ -21429,20 +21461,44 @@
 	                functionalArgs: spendTemplate.functionalArgs.map((arg) => arg.toString("hex")),
 	            });
 	            if (!actualCommitment.equals(expectedCommitment)) {
-	                throw new Error(`AuthScript commitment mismatch for ${txid}:${vout}. The provided PQ key/template does not match the prevout script`);
+	                throw new Error(`AuthScript commitment mismatch for ${txid}:${vout}. The provided key/template does not match the prevout script`);
 	            }
-	            const sighash = hashForAuthScript(tx, i, spendTemplate.witnessScript, getUTXOAmount(utxo), HASH_TYPE, spendTemplate.authType);
-	            const signature = bufferExports.Buffer.from(ml_dsa44.sign(new Uint8Array(sighash), new Uint8Array(pqMaterial.secretKey), {
-	                extraEntropy: false,
-	            }));
-	            const signatureWithHashType = bufferExports.Buffer.concat([signature, bufferExports.Buffer.from([HASH_TYPE])]);
-	            const witnessStack = [
-	                bufferExports.Buffer.from([spendTemplate.authType]),
-	                signatureWithHashType,
-	                pqMaterial.serializedPublicKey,
-	                ...spendTemplate.functionalArgs,
-	                spendTemplate.witnessScript,
-	            ];
+	            let witnessStack;
+	            if (spendTemplate.authType === NOAUTH_TYPE) {
+	                witnessStack = [
+	                    bufferExports.Buffer.from([NOAUTH_TYPE]),
+	                    ...spendTemplate.functionalArgs,
+	                    spendTemplate.witnessScript,
+	                ];
+	            }
+	            else if (spendTemplate.authType === PQ_AUTHSCRIPT_TYPE) {
+	                const pqMaterial = getPQMaterialByAddress(utxo.address);
+	                const sighash = hashForAuthScript(tx, i, spendTemplate.witnessScript, getUTXOAmount(utxo), HASH_TYPE, spendTemplate.authType);
+	                const signature = bufferExports.Buffer.from(ml_dsa44.sign(new Uint8Array(sighash), new Uint8Array(pqMaterial.secretKey), {
+	                    extraEntropy: false,
+	                }));
+	                const signatureWithHashType = bufferExports.Buffer.concat([signature, bufferExports.Buffer.from([HASH_TYPE])]);
+	                witnessStack = [
+	                    bufferExports.Buffer.from([PQ_AUTHSCRIPT_TYPE]),
+	                    signatureWithHashType,
+	                    pqMaterial.serializedPublicKey,
+	                    ...spendTemplate.functionalArgs,
+	                    spendTemplate.witnessScript,
+	                ];
+	            }
+	            else {
+	                const keyPair = getKeyPairByAddress(utxo.address);
+	                const sighash = hashForAuthScript(tx, i, spendTemplate.witnessScript, getUTXOAmount(utxo), HASH_TYPE, spendTemplate.authType);
+	                const rawSignature = keyPair.sign(sighash);
+	                const signatureWithHashType = srcExports.script.signature.encode(bufferExports.Buffer.from(rawSignature), HASH_TYPE);
+	                witnessStack = [
+	                    bufferExports.Buffer.from([LEGACY_AUTHSCRIPT_TYPE]),
+	                    signatureWithHashType,
+	                    bufferExports.Buffer.from(keyPair.publicKey),
+	                    ...spendTemplate.functionalArgs,
+	                    spendTemplate.witnessScript,
+	                ];
+	            }
 	            tx.setInputScript(i, bufferExports.Buffer.alloc(0));
 	            tx.setWitness(i, witnessStack);
 	            debug({

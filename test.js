@@ -11,6 +11,35 @@ const PQ_SIMPLE = {
     "05224c619220720e1a170540ab01a770a466d3975ffe006bffc9c9aa18a7d165caaded4b21613ce8cfbf97f6d2c2d1560e1dae8eb89cc55addcee02b997fb9f4ccf7ea26bc9ffd8a17158f32e5da5597be2deeb0d0667547b6df36e24b7cd845df44d75ab8085f57b792932c466afcbdbfd16e3a272a8fd99fad9782b28fc210dc499a425f668b0204221fbe4883397e79818710d6add1822f71f53291e842677be80639a346302eee89c67246479e676609ec57e075a4c72d0f4f4e0fbcc35c26b893edc307c446cc06d02c61614ad137400e9b93e272734d98d407efd0cd2f2e4119749476f2fc81e5ad28027cdab005f667b1274c1b2e4e662be0814b097a4eff9fabc196928b2ecacf84db5ce8d910b0f50df75ca0ef5c838a5e1a87e12e5d01f2c6a74deff83265dbc2fba744aaad622e4784d4b6e29d5e477e47dfd11d4d30ba5bc4edbd312593a74bde5326b5a6abe87e36eb463872e1b6f8f7461975de613803b08da3469f2d41b23b3d97d23f3893191d99f7299e22f5c1c2b8138a7f3d9bbdc65d6ca894859399b5a5a75d6b8b44227f81f6ccbf8ca4f51d5435816f241ed3acfb817349ca7bc02ce1e70d12d9725f6f69ac04e023a11f96cb6c7d748f4d618a33a694c5b273b6f512832dd4deb452a393ea5ee0c25537361e78bade7894079d819597c30fe5b3e0cb750953840bf3cd3ea5d764748dade95383b743321ac2f211a7e4c7e363666712e0c4fdd90a0d522e62919cbd3c86124329cda46d01871b685c14ae119899e809549e0f0ef8fbf4d000cc1a988c3614477849ff4a042bed52357c98eb6ccbef7c4f5f11829878dbd5185ec5b935515a94aca02e006afcdd7004e729aaada294f02246f2c334a531f440a322d49b9f816a483d4d58d64192f5faf98719e2f81036c229e5644e780ff2ad90408599d8934312255ef0ce2baa2f4e0cc5600b436e7e7b26018236d934c7d28aeccc220f5c9d74fe68dee189ec922db22d5deefdd53896b68bc62dcc56d139abdfac12dc5dcb915972a9d9069070c6251e87310218082531b03cc1529fea52dd28a0b05680dab320d7fb46a2fcca5a7441faa90cd7e2467476b7f8867a3d8d845171aec90f2c5783cae573e52717c4f8deed31f9cf8937cfdaf4792a20c2b82a336607e887f004b2ff91f15af3e98b6552ac224ee08a2d2cea92f98fc90d547a7df7287325bbced147bc93c776651adb4bc0fcdbd83e61298d6796b59aa667005a6391b6876e153b4dcf7e2c73f9b280d0b4b64c3656bf1bdd73aeb02834e1631efa8a48003eda7eed0b6fff6d84183708abc552c1a5afd5136cfe378143299efec0ab5e36f30eade085b8b0e1cef0f2c06b4c899fe91b64c3f44d139fd88f687ae343ef58ff3ae21c32910a55a57e7d701393a964cd0671d08971425245117330ad9697f848a2539e05594572a30903a6ad12cf687628d16560d1fc8e837136f6278cae3725d4105f5cc330d513d3f0ed58d221dd1cae602834ee94649ff55455789c6f821bed82e699ff5a360d65ec2f2c77b4cc285a70953007089247b2937b9c7da3a7dc67de9e8f6517e57910389f6a449e42a42adb6eb46472ff7b18f036c03978c42f816f3302c2db7ec1923ba07aed1f93e0d06517901c3c2ac91ee60e4a1a4a67e554efa639c3c13027e8b7f5a7ce84acefdc3d75769d0a5626931cfb2bbcffba794cd588a662029a3735f7ded6784714e360a7c638c7495c888315ea4aa93ad919c7f88dd8f0477c5d15b6505774b06c37c9de0758a1b8b3ee2301be76cb8744c6ac123be21f7b1e694083b5eeb8cfa66b709747c3b9359621740981ede0046c2432c6f6",
 };
 
+const NOAUTH_SIMPLE = {
+  script: "5120a6c181fcd8137e65528a30e4e2d457b51778238441b8f5dd8911c2084a17ee7b",
+};
+
+const NOAUTH_COVENANT = {
+  witnessScript: "527551",
+  script: "5120fbb0979eccf0690dbd2a2438e40e7c7b351d5e0cb0554c55309f9d30b1206f44",
+};
+
+const LEGACY_AUTHSCRIPT = {
+  WIF: "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW",
+  script: "51204f3bf4e4647e4d567df289c131a999c67734819cd0901e77569af660d3d17adf",
+  pubkey: "02666e9b6aacfa34715c1050e890fa8f07a5e73c70f23abdca585f1506514d81a0",
+};
+
+const LEGACY_AUTHSCRIPT_COVENANT = {
+  WIF: "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW",
+  witnessScript: "527551",
+  script: "51204bc0ba6c8c838e25fdcfd028828c523540463065d976f5b78f44065a8ac95618",
+  pubkey: "02666e9b6aacfa34715c1050e890fa8f07a5e73c70f23abdca585f1506514d81a0",
+};
+
+const PQ_COVENANT = {
+  seedKey: "0707070707070707070707070707070707070707070707070707070707070707",
+  witnessScript: "527551",
+  script: "5120a4ee262f75321960cc90d9bb4c4a2b1db6f945a6b0afe3d4fa7e3a046fa366b6",
+  serializedPublicKey: PQ_SIMPLE.serializedPublicKey,
+};
+
 const PQ_ASSET = {
   seedKey: "0909090909090909090909090909090909090909090909090909090909090909",
   script: "5120f58c1feb865f6127897834ad6f3b7ac8cff224cdbfa21d96c59b944c3311104ac002beef75",
@@ -335,6 +364,472 @@ test("Verify global bundle exposes NeuraiSignTransaction", () => {
 
   expect(context.globalThis.NeuraiSignTransaction).toBeDefined();
   expect(typeof context.globalThis.NeuraiSignTransaction.sign).toBe("function");
+});
+
+test("Verify NoAuth (authType=0x00) signing with OP_TRUE", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+
+  const signedHex = Signer.sign(
+    "xna-pq-test",
+    tx.toHex(),
+    [
+      {
+        address: "noauth-vault",
+        assetName: "XNA",
+        txid: "44".repeat(32),
+        outputIndex: 0,
+        script: NOAUTH_SIMPLE.script,
+        satoshis: 100000,
+        value: 100000,
+      },
+    ],
+    {
+      "noauth-vault": {
+        authType: 0,
+      },
+    }
+  );
+
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const witness = signedTx.ins[0].witness;
+
+  expect(signedTx.ins[0].script.length).toBe(0);
+  expect(witness).toHaveLength(2);
+  expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
+  expect(witness[1].equals(Buffer.from([bitcoin.opcodes.OP_TRUE]))).toBe(true);
+});
+
+test("Verify NoAuth (authType=0x00) signing with covenant witnessScript and functionalArgs", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("55".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+
+  const signedHex = Signer.sign(
+    "xna-pq-test",
+    tx.toHex(),
+    [
+      {
+        address: "covenant-output",
+        assetName: "XNA",
+        txid: "55".repeat(32),
+        outputIndex: 0,
+        script: NOAUTH_COVENANT.script,
+        satoshis: 100000,
+        value: 100000,
+      },
+    ],
+    {
+      "covenant-output": {
+        authType: 0,
+        witnessScript: NOAUTH_COVENANT.witnessScript,
+        functionalArgs: ["deadbeef"],
+      },
+    }
+  );
+
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const witness = signedTx.ins[0].witness;
+
+  expect(signedTx.ins[0].script.length).toBe(0);
+  expect(witness).toHaveLength(3);
+  expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
+  expect(witness[1].equals(Buffer.from("deadbeef", "hex"))).toBe(true);
+  expect(witness[2].toString("hex")).toBe(NOAUTH_COVENANT.witnessScript);
+});
+
+test("Verify Legacy AuthScript (authType=0x02) signing with OP_TRUE", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("66".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+
+  const signedHex = Signer.sign(
+    "xna-test",
+    tx.toHex(),
+    [
+      {
+        address: "legacy-authscript-addr",
+        assetName: "XNA",
+        txid: "66".repeat(32),
+        outputIndex: 0,
+        script: LEGACY_AUTHSCRIPT.script,
+        satoshis: 100000,
+        value: 100000,
+      },
+    ],
+    {
+      "legacy-authscript-addr": {
+        WIF: LEGACY_AUTHSCRIPT.WIF,
+        authType: 2,
+      },
+    }
+  );
+
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const witness = signedTx.ins[0].witness;
+
+  expect(signedTx.ins[0].script.length).toBe(0);
+  expect(witness).toHaveLength(4);
+  expect(witness[0].equals(Buffer.from([0x02]))).toBe(true);
+  expect(witness[1][witness[1].length - 1]).toBe(bitcoin.Transaction.SIGHASH_ALL);
+  expect(witness[2].toString("hex")).toBe(LEGACY_AUTHSCRIPT.pubkey);
+  expect(witness[3].equals(Buffer.from([bitcoin.opcodes.OP_TRUE]))).toBe(true);
+});
+
+test("Verify Legacy AuthScript (authType=0x02) signing with covenant witnessScript", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("77".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+
+  const signedHex = Signer.sign(
+    "xna-test",
+    tx.toHex(),
+    [
+      {
+        address: "legacy-covenant-addr",
+        assetName: "XNA",
+        txid: "77".repeat(32),
+        outputIndex: 0,
+        script: LEGACY_AUTHSCRIPT_COVENANT.script,
+        satoshis: 100000,
+        value: 100000,
+      },
+    ],
+    {
+      "legacy-covenant-addr": {
+        WIF: LEGACY_AUTHSCRIPT_COVENANT.WIF,
+        authType: 2,
+        witnessScript: LEGACY_AUTHSCRIPT_COVENANT.witnessScript,
+        functionalArgs: ["cafe"],
+      },
+    }
+  );
+
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const witness = signedTx.ins[0].witness;
+
+  expect(signedTx.ins[0].script.length).toBe(0);
+  expect(witness).toHaveLength(5);
+  expect(witness[0].equals(Buffer.from([0x02]))).toBe(true);
+  expect(witness[1][witness[1].length - 1]).toBe(bitcoin.Transaction.SIGHASH_ALL);
+  expect(witness[2].toString("hex")).toBe(LEGACY_AUTHSCRIPT_COVENANT.pubkey);
+  expect(witness[3].equals(Buffer.from("cafe", "hex"))).toBe(true);
+  expect(witness[4].toString("hex")).toBe(LEGACY_AUTHSCRIPT_COVENANT.witnessScript);
+});
+
+test("Verify mixed transaction: Legacy P2PKH + NoAuth + PQ AuthScript", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("22".repeat(32), "hex").reverse(), 1);
+  tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0);
+  tx.addInput(Buffer.from("11".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 300000);
+
+  const signedHex = Signer.sign(
+    "xna-test",
+    tx.toHex(),
+    [
+      {
+        address: "mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA",
+        assetName: "XNA",
+        txid: "22".repeat(32),
+        outputIndex: 1,
+        script: "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac",
+        satoshis: 100000,
+        value: 100000,
+      },
+      {
+        address: "noauth-vault",
+        assetName: "XNA",
+        txid: "44".repeat(32),
+        outputIndex: 0,
+        script: NOAUTH_SIMPLE.script,
+        satoshis: 100000,
+        value: 100000,
+      },
+      {
+        address: "pq-input-1",
+        assetName: "XNA",
+        txid: "11".repeat(32),
+        outputIndex: 0,
+        script: PQ_SIMPLE.script,
+        satoshis: 150000,
+        value: 150000,
+      },
+    ],
+    {
+      mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA:
+        "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW",
+      "noauth-vault": {
+        authType: 0,
+      },
+      "pq-input-1": {
+        seedKey: PQ_SIMPLE.seedKey,
+      },
+    }
+  );
+
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+
+  // Input 0: Legacy P2PKH
+  expect(signedTx.ins[0].script.length).toBeGreaterThan(0);
+  expect(signedTx.ins[0].witness).toHaveLength(0);
+
+  // Input 1: NoAuth
+  expect(signedTx.ins[1].script.length).toBe(0);
+  expect(signedTx.ins[1].witness).toHaveLength(2);
+  expect(signedTx.ins[1].witness[0].equals(Buffer.from([0x00]))).toBe(true);
+
+  // Input 2: PQ AuthScript
+  expect(signedTx.ins[2].script.length).toBe(0);
+  expect(signedTx.ins[2].witness).toHaveLength(4);
+  expect(signedTx.ins[2].witness[0].equals(Buffer.from([0x01]))).toBe(true);
+});
+
+test("Verify PQ AuthScript signing with covenant witnessScript and functionalArgs", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("88".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+
+  const signedHex = Signer.sign(
+    "xna-pq-test",
+    tx.toHex(),
+    [
+      {
+        address: "pq-covenant-addr",
+        assetName: "XNA",
+        txid: "88".repeat(32),
+        outputIndex: 0,
+        script: PQ_COVENANT.script,
+        satoshis: 100000,
+        value: 100000,
+      },
+    ],
+    {
+      "pq-covenant-addr": {
+        seedKey: PQ_COVENANT.seedKey,
+        witnessScript: PQ_COVENANT.witnessScript,
+        functionalArgs: ["abcd1234"],
+      },
+    }
+  );
+
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const witness = signedTx.ins[0].witness;
+
+  expect(signedTx.ins[0].script.length).toBe(0);
+  expect(witness).toHaveLength(5);
+  expect(witness[0].equals(Buffer.from([0x01]))).toBe(true);
+  expect(witness[1][witness[1].length - 1]).toBe(bitcoin.Transaction.SIGHASH_ALL);
+  expect(witness[2].toString("hex")).toBe(PQ_COVENANT.serializedPublicKey);
+  expect(witness[3].equals(Buffer.from("abcd1234", "hex"))).toBe(true);
+  expect(witness[4].toString("hex")).toBe(PQ_COVENANT.witnessScript);
+});
+
+test("Verify unsupported authType throws error", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+
+  expect(() =>
+    Signer.sign(
+      "xna-pq-test",
+      tx.toHex(),
+      [
+        {
+          address: "bad-auth-addr",
+          assetName: "XNA",
+          txid: "44".repeat(32),
+          outputIndex: 0,
+          script: NOAUTH_SIMPLE.script,
+          satoshis: 100000,
+          value: 100000,
+        },
+      ],
+      {
+        "bad-auth-addr": {
+          authType: 5,
+        },
+      }
+    )
+  ).toThrow("Unsupported authType 0x05");
+});
+
+test("Verify AuthScript commitment mismatch throws error", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+
+  // Use PQ_SIMPLE script but provide NoAuth key — commitment won't match
+  expect(() =>
+    Signer.sign(
+      "xna-pq-test",
+      tx.toHex(),
+      [
+        {
+          address: "mismatch-addr",
+          assetName: "XNA",
+          txid: "44".repeat(32),
+          outputIndex: 0,
+          script: PQ_SIMPLE.script,
+          satoshis: 100000,
+          value: 100000,
+        },
+      ],
+      {
+        "mismatch-addr": {
+          authType: 0,
+        },
+      }
+    )
+  ).toThrow("AuthScript commitment mismatch");
+});
+
+test("Verify NoAuth signing is deterministic", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+
+  const utxos = [
+    {
+      address: "noauth-vault",
+      assetName: "XNA",
+      txid: "44".repeat(32),
+      outputIndex: 0,
+      script: NOAUTH_SIMPLE.script,
+      satoshis: 100000,
+      value: 100000,
+    },
+  ];
+  const keys = { "noauth-vault": { authType: 0 } };
+
+  const hex1 = Signer.sign("xna-pq-test", tx.toHex(), utxos, keys);
+  const hex2 = Signer.sign("xna-pq-test", tx.toHex(), utxos, keys);
+
+  expect(hex1).toBe(hex2);
+});
+
+test("Verify Legacy AuthScript signing is deterministic", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("66".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+
+  const utxos = [
+    {
+      address: "legacy-det",
+      assetName: "XNA",
+      txid: "66".repeat(32),
+      outputIndex: 0,
+      script: LEGACY_AUTHSCRIPT.script,
+      satoshis: 100000,
+      value: 100000,
+    },
+  ];
+  const keys = { "legacy-det": { WIF: LEGACY_AUTHSCRIPT.WIF, authType: 2 } };
+
+  const hex1 = Signer.sign("xna-test", tx.toHex(), utxos, keys);
+  const hex2 = Signer.sign("xna-test", tx.toHex(), utxos, keys);
+
+  expect(hex1).toBe(hex2);
+});
+
+test("Verify mixed transaction: Legacy P2PKH + NoAuth + PQ + Legacy AuthScript (all 4 types)", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("22".repeat(32), "hex").reverse(), 1); // Legacy P2PKH
+  tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0); // NoAuth
+  tx.addInput(Buffer.from("11".repeat(32), "hex").reverse(), 0); // PQ AuthScript
+  tx.addInput(Buffer.from("66".repeat(32), "hex").reverse(), 0); // Legacy AuthScript
+  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 400000);
+
+  const signedHex = Signer.sign(
+    "xna-test",
+    tx.toHex(),
+    [
+      {
+        address: "mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA",
+        assetName: "XNA",
+        txid: "22".repeat(32),
+        outputIndex: 1,
+        script: "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac",
+        satoshis: 100000,
+        value: 100000,
+      },
+      {
+        address: "noauth-vault",
+        assetName: "XNA",
+        txid: "44".repeat(32),
+        outputIndex: 0,
+        script: NOAUTH_SIMPLE.script,
+        satoshis: 100000,
+        value: 100000,
+      },
+      {
+        address: "pq-input-1",
+        assetName: "XNA",
+        txid: "11".repeat(32),
+        outputIndex: 0,
+        script: PQ_SIMPLE.script,
+        satoshis: 150000,
+        value: 150000,
+      },
+      {
+        address: "legacy-authscript-addr",
+        assetName: "XNA",
+        txid: "66".repeat(32),
+        outputIndex: 0,
+        script: LEGACY_AUTHSCRIPT.script,
+        satoshis: 100000,
+        value: 100000,
+      },
+    ],
+    {
+      mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA:
+        "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW",
+      "noauth-vault": {
+        authType: 0,
+      },
+      "pq-input-1": {
+        seedKey: PQ_SIMPLE.seedKey,
+      },
+      "legacy-authscript-addr": {
+        WIF: LEGACY_AUTHSCRIPT.WIF,
+        authType: 2,
+      },
+    }
+  );
+
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+
+  // Input 0: Legacy P2PKH — scriptSig set, no witness
+  expect(signedTx.ins[0].script.length).toBeGreaterThan(0);
+  expect(signedTx.ins[0].witness).toHaveLength(0);
+
+  // Input 1: NoAuth — empty scriptSig, witness [0x00, witnessScript]
+  expect(signedTx.ins[1].script.length).toBe(0);
+  expect(signedTx.ins[1].witness).toHaveLength(2);
+  expect(signedTx.ins[1].witness[0].equals(Buffer.from([0x00]))).toBe(true);
+
+  // Input 2: PQ AuthScript — empty scriptSig, witness [0x01, sig, pubkey, witnessScript]
+  expect(signedTx.ins[2].script.length).toBe(0);
+  expect(signedTx.ins[2].witness).toHaveLength(4);
+  expect(signedTx.ins[2].witness[0].equals(Buffer.from([0x01]))).toBe(true);
+
+  // Input 3: Legacy AuthScript — empty scriptSig, witness [0x02, sig, pubkey, witnessScript]
+  expect(signedTx.ins[3].script.length).toBe(0);
+  expect(signedTx.ins[3].witness).toHaveLength(4);
+  expect(signedTx.ins[3].witness[0].equals(Buffer.from([0x02]))).toBe(true);
+  expect(signedTx.ins[3].witness[2].toString("hex")).toBe(LEGACY_AUTHSCRIPT.pubkey);
 });
 
 test("Verify browser build does not contain Node require residuals", () => {
