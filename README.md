@@ -1,36 +1,35 @@
 # neurai-sign-transaction
 
-Signs a Neurai transaction
+Signs a Neurai transaction.
 
-The sole purpose of this project is to enable us to
-"Sign XNA, asset and PQ-input transfer transactions in pure JavaScript"
- 
+The purpose of this project is to enable signing XNA, asset and PQ/AuthScript inputs in pure JavaScript.
+
 ## Package outputs
 
-This package now publishes explicit entry points for each runtime:
+This package publishes explicit entry points for each runtime:
 
 - `@neuraiproject/neurai-sign-transaction` -> main ESM/CJS library entry
 - `@neuraiproject/neurai-sign-transaction/browser` -> browser-focused ESM bundle
-- `@neuraiproject/neurai-sign-transaction/global` -> IIFE bundle for `<script>`
+- `@neuraiproject/neurai-sign-transaction/global` -> IIFE bundle for `<script>` usage
 
 The preferred consumption path is ESM. The global bundle is kept only for legacy HTML usage.
 
 ## How to use
 
-The sign method has four required arguments and one optional argument
-1) The network "string", can be "xna" | "xna-test" | "xna-legacy" | "xna-legacy-test" | "xna-pq" | "xna-pq-test",
-2) The raw transaction (in hex)
-3) An array of UTXO objects to use
-4) Private keys. An object with "address" as key.
+The `sign` method has four required arguments and one optional argument:
 
-There is also an optional fifth argument for diagnostics:
-5) `{ debug }`, where `debug` can be `true` to emit console logs or a callback receiving structured events.
+1. network string: `"xna" | "xna-test" | "xna-legacy" | "xna-legacy-test" | "xna-pq" | "xna-pq-test"`
+2. raw transaction hex
+3. array of UTXO objects
+4. private keys object keyed by address/identifier
+5. optional diagnostics object: `{ debug }`
 
 This library signs an already-built raw transaction. It does not build the raw transaction for you.
 
 For legacy inputs, the value can be the WIF string as before, or an object like `{ WIF }`.
 
-For PQ inputs, the value can be any of these:
+For PQ/AuthScript inputs, the value can be any of these:
+
 - a 32-byte seed in hex (`seedKey` from `@neuraiproject/neurai-key`)
 - a 2560-byte ML-DSA-44 secret key in hex (`privateKey` / `secretKey`)
 - a 3872-byte exported keydata blob in hex (`secret + public`)
@@ -38,57 +37,74 @@ For PQ inputs, the value can be any of these:
 
 Mixed transactions are supported, so the same `privateKeys` object can contain legacy WIF entries and PQ entries at the same time.
 
-The signer also supports partial signing flows. Inputs that do not have a matching UTXO in the provided `UTXOs` array, or do not have a matching key entry in `privateKeys`, are preserved as-is and skipped instead of aborting the whole signing process. This is required for mixed atomic swaps where another participant has already signed their own input.
+The signer also supports partial signing flows. Inputs that do not have a matching UTXO in the provided `UTXOs` array, or do not have a matching key entry in `privateKeys`, are preserved as-is and skipped instead of aborting the whole signing process.
 
-For PQ inputs, the referenced UTXO must include a valid amount in `satoshis` or `value`, because the witness sighash includes the prevout amount.
+For PQ/AuthScript inputs, the referenced UTXO must include a valid amount in `satoshis` or `value`, because the witness sighash includes the prevout amount.
 
-PQ inputs are signed with witness data using the Neurai node rules:
-- prevout `OP_1 <20-byte-program>` or `OP_1 <20-byte-program> OP_XNA_ASSET ... OP_DROP`
-- `hashForWitnessV0` including the prevout amount
-- witness stack `[ml-dsa44-signature+sighashType, 0x05||pqPublicKey]`
+## PQ/AuthScript rules
+
+PQ inputs are signed using Neurai AuthScript witness v1 rules:
+
+- prevout must start with `OP_1 <32-byte-commitment>`
+- assets may append the usual asset suffix after the 34-byte AuthScript prefix
+- the signer reconstructs the commitment from:
+  - `auth_type = 0x01`
+  - `auth_descriptor = 0x01 || Hash160(0x05 || pqPublicKey)`
+  - `witnessScript = OP_TRUE` by default
+- sighash uses Neurai `SIGVERSION_AUTHSCRIPT`, which is BIP143-style plus `auth_type_byte`
+- witness stack for the default PQ template is:
+  - `[auth_type_byte, ml-dsa44-signature+sighashType, 0x05||pqPublicKey, witnessScript]`
+
+Current support is intentionally narrow:
+
+- only PQ `auth_type = 0x01` is supported by this library
+- default simple PQ template is `witnessScript = OP_TRUE`
+- custom templates can be provided with `witnessScript` and `functionalArgs`
+- legacy-secp and `NoAuth` AuthScript variants are not signed by this library yet
 
 `xna-pq` and `xna-pq-test` use the PQ bech32 HRPs (`nq` / `tnq`) and PQ bip32 settings.
 
-returns a signed transaction (hex), after that it is up to you to publish it on the network
-```
+The method returns a signed transaction hex. Broadcasting it is up to the caller.
+
+```js
 import Signer from "@neuraiproject/neurai-sign-transaction";
 
-const raw =
-  "0200000002fe6cfe20184b592849231eea8167e3de073b6ec1b8218c2ef36838a4e07dd11c0200000000ffffffff28c32b825b14251708ea39c0ac706bd3d933778d7838d01b678b045a48e219950000000000ffffffff0200000000000000003a76a91416014dfb02a07417cbf8c0366ee5ae0a29d5878f88acc01e72766e74114652454e2f59554c45544944453230323100e1f5050000000075000e2707000000001976a914c6a0e8557c7567a4d9cc84574c34fbb62ece3c9688ac00000000";
+const raw = "...";
 const UTXOs = [
   {
-    address: "RTPSdYw3iB93L6Hb9xWd1ixVxPYu1QePdi",
+    address: "tnq1yourauthscriptaddress...",
     assetName: "XNA",
-    txid: "1cd17de0a43868f32e8c21b8c16e3b07dee36781ea1e234928594b1820fe6cfe",
-    outputIndex: 2,
-    script: "76a914c6a0e8557c7567a4d9cc84574c34fbb62ece3c9688ac",
-    satoshis: 122000000,
-    height: 2670673,
-  },
-  {
-    address: "RSuQSgXXr1z4gKommSqhHLffiNxnSE3Bwn",
-    assetName: "FREN/YULETIDE2021",
-    txid: "9519e2485a048b671bd038788d7733d9d36b70acc039ea081725145b822bc328",
+    txid: "...",
     outputIndex: 0,
-    script:
-      "76a914c1536f46fa2fa04be210406529be283c1c85e4ce88acc01e72766e74114652454e2f59554c45544944453230323100e1f5050000000075",
-    satoshis: 100000000,
-    height: 2670669,
+    script: "5120...", // OP_1 <32-byte commitment>
+    satoshis: 150000,
+    value: 150000,
   },
 ];
 const privateKeys = {
-  RTPSdYw3iB93L6Hb9xWd1ixVxPYu1QePdi:
-    "L2GD7txjmdKSTy7mBq2FowZusjdWP679ttWSRfj4eLBu2usTWMV9",
-  RSuQSgXXr1z4gKommSqhHLffiNxnSE3Bwn:
-    "Kxj2xMvLbcXeGzuSrZLtpnZWzXnTXnhtuCQRQhKLjN7bSQXuakyh",
+  "tnq1yourauthscriptaddress...": {
+    seedKey: "aabbcc...32-byte-seed-in-hex",
+  },
 };
-const signed = Signer.sign("xna", raw, UTXOs, privateKeys);
+const signed = Signer.sign("xna-pq-test", raw, UTXOs, privateKeys);
 console.log(signed);
+```
 
+Example with an explicit custom witnessScript:
 
+```js
+const privateKeys = {
+  "tnq1yourauthscriptaddress...": {
+    seedKey: "aabbcc...32-byte-seed-in-hex",
+    authType: 0x01,
+    witnessScript: "51", // OP_TRUE
+    functionalArgs: [],
+  },
+};
 ```
 
 Debug example:
+
 ```js
 const events = [];
 const signed = Signer.sign(network, rawTransactionHex, utxos, privateKeys, {
@@ -96,15 +112,6 @@ const signed = Signer.sign(network, rawTransactionHex, utxos, privateKeys, {
 });
 
 console.log(events);
-```
-
-Example PQ key input:
-```
-const privateKeys = {
-  tnq1yourpqaddresshere: {
-    seedKey: "aabbcc...32-byte-seed-in-hex",
-  },
-};
 ```
 
 Browser ESM usage:

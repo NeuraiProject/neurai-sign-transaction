@@ -1,6 +1,6 @@
 /**
  * Neurai (XNA) PostQuantum chain configuration data
- * ML-DSA-44 addresses using Bech32m encoding with witness version 1
+ * ML-DSA-44 AuthScript addresses using Bech32m encoding with witness version 1
  */
 
 const xnaPQ = {
@@ -19,8 +19,8 @@ const xnaPQ = {
     hrp: "tnq",
     witnessVersion: 1,
     purpose: 100,
-    coinType: 1900,
-    changeIndex: 1,
+    coinType: 1,
+    changeIndex: 0,
     bip32: {
       private: 70615956,
       public: 70617039

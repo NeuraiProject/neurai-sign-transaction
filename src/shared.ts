@@ -11,12 +11,18 @@ const ECPair = ECPairFactory(ecc);
 
 const HASH_TYPE = bitcoin.Transaction.SIGHASH_ALL;
 const LEGACY_PREFIX_LENGTH = 25;
-const PQ_PREFIX_LENGTH = 22;
+const AUTHSCRIPT_PREFIX_LENGTH = 34;
+const AUTHSCRIPT_PROGRAM_LENGTH = 32;
+const AUTHSCRIPT_TAG = "NeuraiAuthScript";
+const AUTHSCRIPT_VERSION = 0x01;
+const PQ_AUTHSCRIPT_TYPE = 0x01;
 const PQ_PUBLIC_KEY_LENGTH = 1312;
 const PQ_SECRET_KEY_LENGTH = 2560;
 const PQ_KEYDATA_LENGTH = 3872;
 const PQ_SEED_LENGTH = 32;
 const PQ_PUBLIC_KEY_HEADER = Buffer.from([0x05]);
+const DEFAULT_PQ_WITNESS_SCRIPT = Buffer.from([bitcoin.opcodes.OP_TRUE]);
+const ZERO_32 = Buffer.alloc(32, 0);
 
 export type SupportedNetwork =
   | "xna"
@@ -34,6 +40,9 @@ export interface IPQPrivateKeyInput {
   privateKey?: string;
   secretKey?: string;
   publicKey?: string;
+  authType?: number;
+  witnessScript?: string;
+  functionalArgs?: string[];
 }
 
 export interface ISignDebugEvent {
@@ -49,6 +58,12 @@ interface IPQSigningMaterial {
   secretKey: Buffer;
   publicKey: Buffer;
   serializedPublicKey: Buffer;
+}
+
+interface IPQSpendTemplate {
+  authType: number;
+  witnessScript: Buffer;
+  functionalArgs: Buffer[];
 }
 
 type ChainNetwork = {
@@ -137,34 +152,17 @@ function isLegacyScript(script: Buffer): boolean {
 
 function isPQScript(script: Buffer): boolean {
   return (
-    script.length >= PQ_PREFIX_LENGTH &&
+    script.length >= AUTHSCRIPT_PREFIX_LENGTH &&
     script[0] === bitcoin.opcodes.OP_1 &&
-    script[1] === 0x14
+    script[1] === 0x20
   );
 }
 
-function buildP2PKHLikeScript(program: Buffer): Buffer {
-  return bitcoin.script.compile([
-    bitcoin.opcodes.OP_DUP,
-    bitcoin.opcodes.OP_HASH160,
-    program,
-    bitcoin.opcodes.OP_EQUALVERIFY,
-    bitcoin.opcodes.OP_CHECKSIG,
-  ]);
-}
-
-function getPQScriptCode(scriptPubKey: Buffer): Buffer {
+function getAuthScriptProgram(scriptPubKey: Buffer): Buffer {
   if (!isPQScript(scriptPubKey)) {
-    throw new Error("PQ scriptPubKey must start with OP_1 <20-byte program>");
+    throw new Error("AuthScript scriptPubKey must start with OP_1 <32-byte commitment>");
   }
-
-  const program = scriptPubKey.subarray(2, PQ_PREFIX_LENGTH);
-  const scriptCode = buildP2PKHLikeScript(program);
-  if (scriptPubKey.length === PQ_PREFIX_LENGTH) {
-    return scriptCode;
-  }
-
-  return Buffer.concat([scriptCode, scriptPubKey.subarray(PQ_PREFIX_LENGTH)]);
+  return scriptPubKey.subarray(2, AUTHSCRIPT_PREFIX_LENGTH);
 }
 
 function getUTXOAmount(utxo: IUTXO): number {
@@ -174,6 +172,70 @@ function getUTXOAmount(utxo: IUTXO): number {
   }
 
   return amount;
+}
+
+function sha256(buffer: Buffer): Buffer {
+  return Buffer.from(bitcoin.crypto.sha256(buffer));
+}
+
+function hash256(buffer: Buffer): Buffer {
+  return Buffer.from(bitcoin.crypto.hash256(buffer));
+}
+
+function hash160(buffer: Buffer): Buffer {
+  return Buffer.from(bitcoin.crypto.hash160(buffer));
+}
+
+function taggedHash(tag: string, msg: Buffer): Buffer {
+  const tagHash = sha256(Buffer.from(tag, "utf8"));
+  return sha256(Buffer.concat([tagHash, tagHash, msg]));
+}
+
+function encodeVarInt(value: number): Buffer {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`Invalid varint value: ${value}`);
+  }
+  if (value < 0xfd) {
+    return Buffer.from([value]);
+  }
+  if (value <= 0xffff) {
+    const out = Buffer.alloc(3);
+    out[0] = 0xfd;
+    out.writeUInt16LE(value, 1);
+    return out;
+  }
+  if (value <= 0xffffffff) {
+    const out = Buffer.alloc(5);
+    out[0] = 0xfe;
+    out.writeUInt32LE(value, 1);
+    return out;
+  }
+  const out = Buffer.alloc(9);
+  out[0] = 0xff;
+  writeUInt64LE(out, BigInt(value), 1);
+  return out;
+}
+
+function encodeVarSlice(buffer: Buffer): Buffer {
+  return Buffer.concat([encodeVarInt(buffer.length), buffer]);
+}
+
+function writeUInt64LE(target: Buffer, value: bigint, offset = 0): void {
+  const normalized = BigInt.asUintN(64, value);
+  target.writeUInt32LE(Number(normalized & 0xffffffffn), offset);
+  target.writeUInt32LE(Number((normalized >> 32n) & 0xffffffffn), offset + 4);
+}
+
+function serializeOutput(output: bitcoin.Transaction["outs"][number]): Buffer {
+  const value = Buffer.alloc(8);
+  writeUInt64LE(value, BigInt(output.value));
+  return Buffer.concat([value, encodeVarSlice(output.script)]);
+}
+
+function serializeOutpoint(input: bitcoin.Transaction["ins"][number]): Buffer {
+  const index = Buffer.alloc(4);
+  index.writeUInt32LE(input.index, 0);
+  return Buffer.concat([Buffer.from(input.hash), index]);
 }
 
 function toSerializedPQPublicKey(publicKey: Buffer): Buffer {
@@ -263,6 +325,139 @@ function getPQMaterialFromEntry(
   throw new Error(
     `Missing PQ key material for address ${address}. Provide seedKey, privateKey or secretKey in hex`
   );
+}
+
+function getPQSpendTemplate(
+  address: string,
+  privateKeyEntry: PrivateKeyInput
+): IPQSpendTemplate {
+  if (typeof privateKeyEntry === "string") {
+    return {
+      authType: PQ_AUTHSCRIPT_TYPE,
+      witnessScript: DEFAULT_PQ_WITNESS_SCRIPT,
+      functionalArgs: [],
+    };
+  }
+
+  const authType = privateKeyEntry.authType ?? PQ_AUTHSCRIPT_TYPE;
+  if (authType !== PQ_AUTHSCRIPT_TYPE) {
+    throw new Error(
+      `Unsupported authType ${authType} for PQ address ${address}. Only auth_type 0x01 is supported`
+    );
+  }
+
+  const witnessScript = privateKeyEntry.witnessScript
+    ? bufferFromHex(
+        privateKeyEntry.witnessScript,
+        `AuthScript witnessScript for address ${address}`
+      )
+    : DEFAULT_PQ_WITNESS_SCRIPT;
+
+  const functionalArgs = (privateKeyEntry.functionalArgs ?? []).map((arg, idx) =>
+    bufferFromHex(arg, `AuthScript functionalArgs[${idx}] for address ${address}`)
+  );
+
+  return {
+    authType,
+    witnessScript,
+    functionalArgs,
+  };
+}
+
+function getAuthScriptCommitment(
+  authType: number,
+  serializedPublicKey: Buffer,
+  witnessScript: Buffer
+): Buffer {
+  if (authType !== PQ_AUTHSCRIPT_TYPE) {
+    throw new Error(`Unsupported authType ${authType}. Only auth_type 0x01 is supported`);
+  }
+
+  const authDescriptor = Buffer.concat([
+    Buffer.from([authType]),
+    hash160(serializedPublicKey),
+  ]);
+  const witnessScriptHash = sha256(witnessScript);
+  const preimage = Buffer.concat([
+    Buffer.from([AUTHSCRIPT_VERSION]),
+    authDescriptor,
+    witnessScriptHash,
+  ]);
+  return taggedHash(AUTHSCRIPT_TAG, preimage);
+}
+
+function hashForAuthScript(
+  tx: bitcoin.Transaction,
+  inIndex: number,
+  witnessScript: Buffer,
+  amount: number,
+  hashType: number,
+  authType: number
+): Buffer {
+  const baseType = hashType & 0x1f;
+  const anyoneCanPay = (hashType & bitcoin.Transaction.SIGHASH_ANYONECANPAY) !== 0;
+
+  let hashPrevouts = ZERO_32;
+  let hashSequence = ZERO_32;
+  let hashOutputs = ZERO_32;
+
+  if (!anyoneCanPay) {
+    hashPrevouts = hash256(Buffer.concat(tx.ins.map(serializeOutpoint)));
+  }
+
+  if (
+    !anyoneCanPay &&
+    baseType !== bitcoin.Transaction.SIGHASH_SINGLE &&
+    baseType !== bitcoin.Transaction.SIGHASH_NONE
+  ) {
+    hashSequence = hash256(
+      Buffer.concat(
+        tx.ins.map((input) => {
+          const sequence = Buffer.alloc(4);
+          sequence.writeUInt32LE(input.sequence, 0);
+          return sequence;
+        })
+      )
+    );
+  }
+
+  if (
+    baseType !== bitcoin.Transaction.SIGHASH_SINGLE &&
+    baseType !== bitcoin.Transaction.SIGHASH_NONE
+  ) {
+    hashOutputs = hash256(Buffer.concat(tx.outs.map(serializeOutput)));
+  } else if (baseType === bitcoin.Transaction.SIGHASH_SINGLE && inIndex < tx.outs.length) {
+    hashOutputs = hash256(serializeOutput(tx.outs[inIndex]));
+  }
+
+  const input = tx.ins[inIndex];
+  const outpoint = serializeOutpoint(input);
+  const sequence = Buffer.alloc(4);
+  sequence.writeUInt32LE(input.sequence, 0);
+  const version = Buffer.alloc(4);
+  version.writeInt32LE(tx.version, 0);
+  const amountBuffer = Buffer.alloc(8);
+  writeUInt64LE(amountBuffer, BigInt(amount));
+  const locktime = Buffer.alloc(4);
+  locktime.writeUInt32LE(tx.locktime, 0);
+  const hashTypeBuffer = Buffer.alloc(4);
+  hashTypeBuffer.writeUInt32LE(hashType >>> 0, 0);
+
+  const preimage = Buffer.concat([
+    version,
+    hashPrevouts,
+    hashSequence,
+    outpoint,
+    encodeVarSlice(witnessScript),
+    amountBuffer,
+    sequence,
+    hashOutputs,
+    locktime,
+    Buffer.from([authType]),
+    hashTypeBuffer,
+  ]);
+
+  return hash256(preimage);
 }
 
 function getUTXOKey(txid: string, outputIndex: number): string {
@@ -416,7 +611,7 @@ export function sign(
 
     if (!inputIsLegacy && !inputIsPQ) {
       throw new Error(
-        `Unsupported prevout script for ${txid}:${vout}. Only legacy P2PKH and Neurai PQ witness v1 are supported`
+        `Unsupported prevout script for ${txid}:${vout}. Only legacy P2PKH and Neurai AuthScript witness v1 are supported`
       );
     }
 
@@ -437,24 +632,66 @@ export function sign(
         continue;
       }
 
+      const privateKeyEntry = privateKeys[utxo.address];
+      if (!privateKeyEntry) {
+        throw new Error(`Missing private key for address: ${utxo.address}`);
+      }
+
       const pqMaterial = getPQMaterialByAddress(utxo.address);
-      const scriptCode = getPQScriptCode(scriptPubKey);
-      const sighash = tx.hashForWitnessV0(i, scriptCode, getUTXOAmount(utxo), HASH_TYPE);
+      const spendTemplate = getPQSpendTemplate(utxo.address, privateKeyEntry);
+      const actualCommitment = getAuthScriptProgram(scriptPubKey);
+      const expectedCommitment = getAuthScriptCommitment(
+        spendTemplate.authType,
+        pqMaterial.serializedPublicKey,
+        spendTemplate.witnessScript
+      );
+
+      debug({
+        step: "authscript-template",
+        i,
+        authType: spendTemplate.authType,
+        witnessScriptHex: spendTemplate.witnessScript.toString("hex"),
+        functionalArgs: spendTemplate.functionalArgs.map((arg) => arg.toString("hex")),
+      });
+
+      if (!actualCommitment.equals(expectedCommitment)) {
+        throw new Error(
+          `AuthScript commitment mismatch for ${txid}:${vout}. The provided PQ key/template does not match the prevout script`
+        );
+      }
+
+      const sighash = hashForAuthScript(
+        tx,
+        i,
+        spendTemplate.witnessScript,
+        getUTXOAmount(utxo),
+        HASH_TYPE,
+        spendTemplate.authType
+      );
       const signature = Buffer.from(
         ml_dsa44.sign(new Uint8Array(sighash), new Uint8Array(pqMaterial.secretKey), {
           extraEntropy: false,
         })
       );
       const signatureWithHashType = Buffer.concat([signature, Buffer.from([HASH_TYPE])]);
+      const witnessStack = [
+        Buffer.from([spendTemplate.authType]),
+        signatureWithHashType,
+        pqMaterial.serializedPublicKey,
+        ...spendTemplate.functionalArgs,
+        spendTemplate.witnessScript,
+      ];
 
       tx.setInputScript(i, Buffer.alloc(0));
-      tx.setWitness(i, [signatureWithHashType, pqMaterial.serializedPublicKey]);
+      tx.setWitness(i, witnessStack);
       debug({
         step: "witness-set",
         i,
         witnessItems: tx.ins[i].witness?.length ?? 0,
         witness0Len: tx.ins[i].witness?.[0]?.length ?? 0,
         witness1Len: tx.ins[i].witness?.[1]?.length ?? 0,
+        witness2Len: tx.ins[i].witness?.[2]?.length ?? 0,
+        witnessLastHex: tx.ins[i].witness?.[tx.ins[i].witness.length - 1]?.toString("hex") ?? null,
       });
       continue;
     }

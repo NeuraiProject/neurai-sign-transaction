@@ -6,6 +6,9 @@ interface IPQPrivateKeyInput {
     privateKey?: string;
     secretKey?: string;
     publicKey?: string;
+    authType?: number;
+    witnessScript?: string;
+    functionalArgs?: string[];
 }
 interface ISignDebugEvent {
     step: string;
