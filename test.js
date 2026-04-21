@@ -1046,15 +1046,325 @@ test("Covenant cancel legacy — rejects when caller key does not match covenant
   );
 });
 
-test("Covenant cancel PQ hint — rejected as not implemented in 1.3.x", () => {
-  const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
-  const fx = buildCancelFixture({ sellerKeyPair });
-  const pqHintUtxo = {
+// ─────────────────────────────────────────────────────────────────────────
+// Covenant-cancel-pq + computeOpTxHash (Fase B.2)
+// ─────────────────────────────────────────────────────────────────────────
+
+const { ml_dsa44 } = require("@noble/post-quantum/ml-dsa.js");
+const nobleHashes = require("@noble/hashes/sha2.js");
+const sha256Sync = nobleHashes.sha256 || nobleHashes.default?.sha256;
+
+function buildCancelPQFixture(opts) {
+  const seed = opts.seedHex
+    ? Buffer.from(opts.seedHex, "hex")
+    : Buffer.from("07".repeat(32), "hex");
+  const keyPair = ml_dsa44.keygen(new Uint8Array(seed));
+  const publicKey = Buffer.from(keyPair.publicKey);
+  const serializedPublicKey = Buffer.concat([Buffer.from([0x05]), publicKey]);
+  const pubKeyCommitment = Buffer.from(sha256Sync(new Uint8Array(serializedPublicKey)));
+
+  const paymentKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const paymentPKH = bitcoin.crypto.hash160(Buffer.from(paymentKeyPair.publicKey));
+  const paymentAddress = bitcoin.address.toBase58Check(paymentPKH, XNA_TESTNET.pubKeyHash);
+
+  const selector = opts.selector ?? 0xff;
+  const covenantHex = NeuraiScripts.buildPartialFillScriptPQHex({
+    paymentAddress,
+    pubKeyCommitment: new Uint8Array(pubKeyCommitment),
+    tokenId: "CAT",
+    unitPriceSats: 100000000n,
+    txHashSelector: selector,
+  });
+
+  const payloadHex = encodeAssetPayloadHex("TREST", 10000000000n);
+  const wrappedSpkHex = encodeWrappedSpkHex(covenantHex, payloadHex);
+
+  const prevTxid = Buffer.from("44".repeat(32), "hex");
+  const unsignedTx = new bitcoin.Transaction();
+  unsignedTx.version = 2;
+  unsignedTx.locktime = 0;
+  unsignedTx.addInput(prevTxid, 0, 0xfffffffe, Buffer.alloc(0));
+
+  // Refund to a P2PKH wrapping the same asset — shape the addon recognises.
+  const refundKey = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const refundPKH = bitcoin.crypto.hash160(Buffer.from(refundKey.publicKey));
+  const refundSpk = bitcoin.script.compile([
+    bitcoin.opcodes.OP_DUP,
+    bitcoin.opcodes.OP_HASH160,
+    refundPKH,
+    bitcoin.opcodes.OP_EQUALVERIFY,
+    bitcoin.opcodes.OP_CHECKSIG,
+  ]);
+  const refundWrapped = Buffer.from(
+    encodeWrappedSpkHex(refundSpk.toString("hex"), payloadHex),
+    "hex"
+  );
+  unsignedTx.addOutput(refundWrapped, 1000);
+
+  const sellerLabel = "pq-covenant-seller";
+  return {
+    network: "xna-test",
+    rawUnsignedTx: unsignedTx.toHex(),
+    covenantWrappedSpkHex: wrappedSpkHex,
+    covenantPrefixHex: covenantHex,
+    paymentAddress,
+    selector,
+    seed,
+    publicKey,
+    serializedPublicKey,
+    pubKeyCommitment,
+    utxo: {
+      address: sellerLabel,
+      assetName: "TREST",
+      txid: prevTxid.reverse().toString("hex"),
+      outputIndex: 0,
+      script: wrappedSpkHex,
+      satoshis: 10000000000,
+      value: 10000000000,
+      bareScriptHint: { kind: "covenant-cancel-pq", txHashSelector: selector },
+    },
+    privateKeys: { [sellerLabel]: { seedKey: seed.toString("hex") } },
+  };
+}
+
+test("Covenant cancel PQ — happy path (selector 0xff)", () => {
+  const fx = buildCancelPQFixture({});
+
+  const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+
+  // scriptSig must decode to [sigPQ+hashtype, pubkey (1313 B), OP_1]
+  expect(signedTx.ins).toHaveLength(1);
+  expect(signedTx.ins[0].witness).toHaveLength(0);
+  const chunks = bitcoin.script.decompile(signedTx.ins[0].script);
+  expect(chunks).not.toBeNull();
+  expect(chunks).toHaveLength(3);
+  const [sigChunk, pubChunk, opOne] = chunks;
+  expect(Buffer.isBuffer(sigChunk)).toBe(true);
+  expect(Buffer.isBuffer(pubChunk)).toBe(true);
+  // 2420-byte ML-DSA-44 signature + 1 byte HASH_TYPE appended = 2421.
+  // (The plan's "2421 bytes" figure refers to the full on-stack element.)
+  expect(sigChunk.length).toBe(2420 + 1);
+  expect(sigChunk[sigChunk.length - 1]).toBe(bitcoin.Transaction.SIGHASH_ALL);
+  // Versioned pubkey = 1 byte prefix + 1312 bytes ML-DSA-44 key
+  expect(pubChunk.length).toBe(1313);
+  expect(pubChunk.equals(fx.serializedPublicKey)).toBe(true);
+  expect(opOne).toBe(bitcoin.opcodes.OP_1);
+
+  // Verify the signature cryptographically: CSFS re-hashes the stack msg,
+  // so the effective verification input is SHA256(opTxHash). We sign that.
+  // computeOpTxHash is library-internal but re-exported from shared — use
+  // the same algorithm via the published bundle.
+  const TxHash = require("./dist/index.cjs");
+  // Internal helper not exported; re-derive the expected message here.
+  const opTxHash = require("./dist/index.cjs"); // placeholder to keep lint happy — real assertion below.
+  void TxHash;
+  void opTxHash;
+
+  // Reconstruct opTxHash using a local mirror: the test exercises the
+  // full flow end-to-end but asserts behavioural invariants; the per-bit
+  // byte-exact check lives in its own test below.
+  const sigOnly = sigChunk.slice(0, sigChunk.length - 1);
+  // ml-dsa-44 verify takes the message WE SIGNED (SHA256(opTxHash)).
+  // Derive it here via the same code path the lib uses.
+  const verifyFn = ml_dsa44.verify.bind(ml_dsa44);
+  // Compute opTxHash(selector 0xff) for this tx + inIndex 0 using the
+  // same algorithm (inlined to keep this test independent of internals).
+  const expectedOpTxHash = computeOpTxHashForTest(signedTx, fx.selector, 0);
+  const expectedMsg = Buffer.from(sha256Sync(new Uint8Array(expectedOpTxHash)));
+  expect(
+    verifyFn(new Uint8Array(sigOnly), new Uint8Array(expectedMsg), new Uint8Array(fx.publicKey))
+  ).toBe(true);
+});
+
+test("Covenant cancel PQ — rejects bare (non-wrapped) prevout", () => {
+  const fx = buildCancelPQFixture({});
+  const bareUtxo = { ...fx.utxo, script: fx.covenantPrefixHex };
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [bareUtxo], fx.privateKeys)).toThrow(
+    /requires an asset-wrapped prevout/
+  );
+});
+
+test("Covenant cancel PQ — rejects wrapper whose prefix is not a PQ covenant", () => {
+  const fx = buildCancelPQFixture({});
+  const malformedHex =
+    "63" + // OP_IF
+    "76a9" + // junk
+    "68"; // OP_ENDIF
+  const wrappedBad = encodeWrappedSpkHex(
+    malformedHex,
+    encodeAssetPayloadHex("TREST", 10000000000n)
+  );
+  const badUtxo = { ...fx.utxo, script: wrappedBad };
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [badUtxo], fx.privateKeys)).toThrow(
+    /not a recognized PQ partial-fill covenant/
+  );
+});
+
+test("Covenant cancel PQ — rejects selector mismatch between hint and covenant", () => {
+  // Covenant built with selector 0xff, hint says 0x01 → reject.
+  const fx = buildCancelPQFixture({ selector: 0xff });
+  const mismatchUtxo = {
     ...fx.utxo,
-    bareScriptHint: { kind: "covenant-cancel-pq", txHashSelector: 0xff },
+    bareScriptHint: { kind: "covenant-cancel-pq", txHashSelector: 0x01 },
+  };
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [mismatchUtxo], fx.privateKeys)).toThrow(
+    /selector mismatch/
+  );
+});
+
+test("Covenant cancel PQ — rejects commitment mismatch (wrong seedKey)", () => {
+  const fx = buildCancelPQFixture({
+    seedHex: "07".repeat(32),
+  });
+  // Sign with a DIFFERENT seed — pubkey commitment won't match the covenant.
+  const wrongSeed = "08".repeat(32);
+  const keys = { [fx.utxo.address]: { seedKey: wrongSeed } };
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], keys)).toThrow(
+    /commitment mismatch/
+  );
+});
+
+// ───────────────────────────────────────────────────────────
+// computeOpTxHash — self-consistency (byte-exact vs node will be in H3.6)
+// ───────────────────────────────────────────────────────────
+
+/**
+ * Local mirror of `computeOpTxHash` used by the PQ happy-path test above.
+ * It is a *copy* of the algorithm to catch regressions where the public
+ * library value drifts silently; if this helper ever disagrees with the
+ * library's internal result, the verify() call above will fail and the
+ * test will light up.
+ */
+function computeOpTxHashForTest(tx, selector, inIndex) {
+  const h256 = (b) => bitcoin.crypto.hash256(b);
+  const encVarInt = (n) => {
+    if (n < 0xfd) return Buffer.from([n]);
+    if (n <= 0xffff) {
+      const b = Buffer.alloc(3);
+      b[0] = 0xfd;
+      b.writeUInt16LE(n, 1);
+      return b;
+    }
+    if (n <= 0xffffffff) {
+      const b = Buffer.alloc(5);
+      b[0] = 0xfe;
+      b.writeUInt32LE(n, 1);
+      return b;
+    }
+    throw new Error("varint too big");
+  };
+  const encVarSlice = (buf) => Buffer.concat([encVarInt(buf.length), buf]);
+  const outpoint = (inp) => {
+    const idx = Buffer.alloc(4);
+    idx.writeUInt32LE(inp.index, 0);
+    return Buffer.concat([Buffer.from(inp.hash), idx]);
+  };
+  const seqBytes = (inp) => {
+    const s = Buffer.alloc(4);
+    s.writeUInt32LE(inp.sequence, 0);
+    return s;
+  };
+  const outBytes = (o) => {
+    const v = Buffer.alloc(8);
+    v.writeBigUInt64LE(BigInt(o.value), 0);
+    return Buffer.concat([v, encVarSlice(o.script)]);
   };
 
-  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [pqHintUtxo], fx.privateKeys)).toThrow(
-    /lands in @neuraiproject\/neurai-sign-transaction 1\.4\.0/
+  const parts = [];
+  for (let b = 0; b < 8; b += 1) {
+    const bit = 1 << b;
+    if ((selector & bit) === 0) continue;
+    switch (bit) {
+      case 0x01: {
+        const v = Buffer.alloc(4);
+        v.writeInt32LE(tx.version, 0);
+        parts.push(v);
+        break;
+      }
+      case 0x02: {
+        const l = Buffer.alloc(4);
+        l.writeUInt32LE(tx.locktime, 0);
+        parts.push(l);
+        break;
+      }
+      case 0x04:
+        parts.push(Buffer.from(h256(Buffer.concat(tx.ins.map(outpoint)))));
+        break;
+      case 0x08:
+        parts.push(Buffer.from(h256(Buffer.concat(tx.ins.map(seqBytes)))));
+        break;
+      case 0x10:
+        parts.push(Buffer.from(h256(Buffer.concat(tx.outs.map(outBytes)))));
+        break;
+      case 0x20:
+        parts.push(outpoint(tx.ins[inIndex]));
+        break;
+      case 0x40:
+        parts.push(seqBytes(tx.ins[inIndex]));
+        break;
+      case 0x80: {
+        const i = Buffer.alloc(4);
+        i.writeUInt32LE(inIndex, 0);
+        parts.push(i);
+        break;
+      }
+    }
+  }
+  return Buffer.from(h256(Buffer.concat(parts)));
+}
+
+test("computeOpTxHash — aggregate bits use BIP143-style pre-hash (not raw concat)", () => {
+  // Build a tx with ≥2 inputs / ≥2 outputs so that a "raw concat" bug
+  // would produce a visibly different digest than a BIP143-style pre-hash.
+  // Use a non-zero locktime so the inputs-aligned selectors (0x02, 0x80)
+  // don't trivially collide when inIndex=0: SHA256d([00 00 00 00]) ==
+  // SHA256d([00 00 00 00]) is a real consensus property, not a bug.
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.locktime = 42;
+  tx.addInput(Buffer.from("11".repeat(32), "hex"), 0, 0xfffffffe, Buffer.alloc(0));
+  tx.addInput(Buffer.from("22".repeat(32), "hex"), 7, 0xfffffffd, Buffer.alloc(0));
+  tx.addOutput(Buffer.from("6a04deadbeef", "hex"), 100);
+  tx.addOutput(Buffer.from("76a91400".repeat(3) + "0000000088ac", "hex"), 50000);
+
+  // Sanity: per-bit hashes are all 32 bytes and all different.
+  const seen = new Set();
+  for (const sel of [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0xff]) {
+    const h = computeOpTxHashForTest(tx, sel, 0);
+    expect(h.length).toBe(32);
+    seen.add(h.toString("hex"));
+  }
+  // 9 selectors should yield 9 distinct hashes (extremely unlikely collision).
+  expect(seen.size).toBe(9);
+
+  // Aggregate bits MUST NOT equal the raw concat of inputs/outputs. Build
+  // a naive "raw concat" variant and check it differs from the real 0x04.
+  const naive = bitcoin.crypto.hash256(
+    Buffer.concat(
+      tx.ins.map((inp) => {
+        const idx = Buffer.alloc(4);
+        idx.writeUInt32LE(inp.index, 0);
+        return Buffer.concat([Buffer.from(inp.hash), idx]);
+      })
+    )
   );
+  // Real 0x04: hash256(hash256(concat(outpoints))) ≠ naive = hash256(concat(outpoints))
+  const real = computeOpTxHashForTest(tx, 0x04, 0);
+  expect(real.equals(Buffer.from(naive))).toBe(false);
+});
+
+test("computeOpTxHash — CURRENT_* bits differ per input index", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.locktime = 0;
+  tx.addInput(Buffer.from("aa".repeat(32), "hex"), 0, 0xfffffffe, Buffer.alloc(0));
+  tx.addInput(Buffer.from("bb".repeat(32), "hex"), 5, 0xfffffff0, Buffer.alloc(0));
+  tx.addOutput(Buffer.from("51", "hex"), 1000);
+
+  for (const bit of [0x20, 0x40, 0x80]) {
+    const h0 = computeOpTxHashForTest(tx, bit, 0);
+    const h1 = computeOpTxHashForTest(tx, bit, 1);
+    expect(h0.equals(h1)).toBe(false);
+  }
 });

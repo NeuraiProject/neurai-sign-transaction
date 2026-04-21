@@ -20992,8 +20992,12 @@ const OP_EQUALVERIFY = 0x88;
 const OP_SUB = 0x94;
 const OP_MUL = 0x95;
 const OP_GREATERTHANOREQUAL = 0xa2;
+const OP_SHA256 = 0xa8;
 const OP_HASH160 = 0xa9;
 const OP_CHECKSIG = 0xac;
+const OP_CHECKSIGFROMSTACK = 0xb4;
+// ---------- Transaction introspection (DePIN-Test) ----------
+const OP_TXHASH = 0xb5;
 const OP_TXFIELD = 0xb6;
 const OP_OUTPUTVALUE = 0xcc;
 const OP_OUTPUTSCRIPT = 0xcd;
@@ -21727,6 +21731,246 @@ function parsePartialFillScript(script, network = 'xna-test') {
         scriptHex: bytesToHex(bytes)
     };
 }
+/**
+ * Parse a PQ partial-fill covenant. Throws if the bytes do not match the
+ * exact layout produced by `buildPartialFillScriptPQ`.
+ */
+function parsePartialFillScriptPQ(script, network = 'xna-test') {
+    const bytes = typeof script === 'string' ? hexToBytes(script) : script;
+    const c = makeCursor(bytes);
+    // ───── Cancel branch (PQ) ─────
+    expectByte(c, OP_IF, 'OP_IF');
+    expectByte(c, OP_DUP, 'OP_DUP (cancel)');
+    expectByte(c, OP_SHA256, 'OP_SHA256');
+    const pubKeyCommitment = readPush(c, 'pubKeyCommitment');
+    if (pubKeyCommitment.length !== 32) {
+        throw new Error(`parse-pq: pubKeyCommitment must be 32 bytes, got ${pubKeyCommitment.length}`);
+    }
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (cancel)');
+    const txHashSelectorBig = readPushPositiveInt(c, 'txHashSelector');
+    if (txHashSelectorBig < 1n || txHashSelectorBig > 0xffn) {
+        throw new Error(`parse-pq: txHashSelector out of range (${txHashSelectorBig})`);
+    }
+    const txHashSelector = Number(txHashSelectorBig);
+    expectByte(c, OP_TXHASH, 'OP_TXHASH');
+    expectByte(c, OP_SWAP, 'OP_SWAP');
+    expectByte(c, OP_CHECKSIGFROMSTACK, 'OP_CHECKSIGFROMSTACK');
+    expectByte(c, OP_ELSE, 'OP_ELSE');
+    // ───── Fill branch ─────
+    expectByte(c, OP_DUP, 'OP_DUP (price)');
+    const unitPriceSats = readPushPositiveInt(c, 'unitPriceSats');
+    expectByte(c, OP_MUL, 'OP_MUL');
+    expectByte(c, OP_0, 'OP_0 (payment idx)');
+    expectByte(c, OP_OUTPUTVALUE, 'OP_OUTPUTVALUE');
+    expectByte(c, OP_SWAP, 'OP_SWAP');
+    expectByte(c, OP_GREATERTHANOREQUAL, 'OP_GE');
+    expectByte(c, OP_VERIFY, 'OP_VERIFY');
+    expectByte(c, OP_0, 'OP_0 (payment spk idx)');
+    expectByte(c, OP_OUTPUTSCRIPT, 'OP_OUTPUTSCRIPT (payment)');
+    const paymentScriptPubKey = readPush(c, 'paymentScriptPubKey');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment)');
+    expectByte(c, OP_DUP, 'OP_DUP (buyer amount)');
+    expectByte(c, OP_1, 'OP_1 (buyer idx)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT selector)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount)');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount)');
+    expectByte(c, OP_1, 'OP_1 (buyer idx)');
+    expectByte(c, OP_1, 'OP_1 (NAME selector)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name)');
+    const tokenIdBytes1 = readPush(c, 'tokenId #1');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name)');
+    expectByte(c, OP_2, 'OP_2 (remainder idx)');
+    expectByte(c, OP_OUTPUTSCRIPT, 'OP_OUTPUTSCRIPT (remainder)');
+    expectByte(c, OP_3, 'OP_3 (TXFIELD selector)');
+    expectByte(c, OP_TXFIELD, 'OP_TXFIELD');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder spk)');
+    expectByte(c, OP_2, 'OP_2 (remainder idx)');
+    expectByte(c, OP_1, 'OP_1 (NAME selector)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder name)');
+    const tokenIdBytes2 = readPush(c, 'tokenId #2');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder name)');
+    expectByte(c, OP_2, 'OP_2 (remainder idx)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT selector)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder amount)');
+    expectByte(c, OP_OVER, 'OP_OVER');
+    expectByte(c, OP_0, 'OP_0 (input idx)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT selector)');
+    expectByte(c, OP_INPUTASSETFIELD, 'OP_INPUTASSETFIELD');
+    expectByte(c, OP_SWAP, 'OP_SWAP');
+    expectByte(c, OP_SUB, 'OP_SUB');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder amount)');
+    expectByte(c, OP_DROP, 'OP_DROP');
+    expectByte(c, OP_1, 'OP_1 (true)');
+    expectByte(c, OP_ENDIF, 'OP_ENDIF');
+    assertTrailing(c);
+    if (!bytesEqual(tokenIdBytes1, tokenIdBytes2)) {
+        throw new Error('parse-pq: tokenId differs between buyer and remainder checks');
+    }
+    const tokenId = new TextDecoder('utf-8', { fatal: true }).decode(tokenIdBytes1);
+    return {
+        network,
+        pubKeyCommitment,
+        tokenId,
+        unitPriceSats,
+        txHashSelector,
+        paymentScriptPubKey,
+        scriptHex: bytesToHex(bytes)
+    };
+}
+
+/**
+ * JavaScript mirror of Neurai's `OP_TXHASH(selector)` consensus opcode.
+ *
+ * The algorithm follows the BIP143-style convention used by Bitcoin Core:
+ * the "aggregate" selector bits (`INPUT_PREVOUTS`, `INPUT_SEQUENCES`,
+ * `OUTPUTS`) are materialised as SHA-256d sub-hashes of the concatenated
+ * per-input / per-output fields; the "scalar" bits contribute their raw
+ * little-endian serialisation. The outer `buffer` is then SHA-256d'd to
+ * produce the 32-byte value that the consensus interpreter pushes onto the
+ * stack when `OP_TXHASH` runs.
+ *
+ * Authoritative reference: `blockchain/Neurai/src/script/interpreter.cpp`
+ * (`case OP_TXHASH`). The plan that drives this file — with byte-exact
+ * layout table per bit — is
+ * `lib/plan-frente-b-covenant-cancel-v2.md §3.6`.
+ *
+ * Invariant: the bits are consumed in **ascending numeric order** (0x01,
+ * 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80). Changing the order here —
+ * even for bits that would otherwise commute — produces a different final
+ * digest and therefore an invalid signature.
+ */
+const TXHASH_VERSION = 0x01;
+const TXHASH_LOCKTIME = 0x02;
+const TXHASH_INPUT_PREVOUTS = 0x04;
+const TXHASH_INPUT_SEQUENCES = 0x08;
+const TXHASH_OUTPUTS = 0x10;
+const TXHASH_CURRENT_PREVOUT = 0x20;
+const TXHASH_CURRENT_SEQUENCE = 0x40;
+const TXHASH_CURRENT_INDEX = 0x80;
+function hash256$1(buf) {
+    return bufferExports.Buffer.from(srcExports.crypto.hash256(buf));
+}
+function writeUInt64LE$1(target, value, offset) {
+    const normalized = BigInt.asUintN(64, value);
+    target.writeUInt32LE(Number(normalized & 0xffffffffn), offset);
+    target.writeUInt32LE(Number((normalized >> 32n) & 0xffffffffn), offset + 4);
+}
+function encodeVarInt$1(value) {
+    if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error(`Invalid varint value: ${value}`);
+    }
+    if (value < 0xfd)
+        return bufferExports.Buffer.from([value]);
+    if (value <= 0xffff) {
+        const out = bufferExports.Buffer.alloc(3);
+        out[0] = 0xfd;
+        out.writeUInt16LE(value, 1);
+        return out;
+    }
+    if (value <= 0xffffffff) {
+        const out = bufferExports.Buffer.alloc(5);
+        out[0] = 0xfe;
+        out.writeUInt32LE(value, 1);
+        return out;
+    }
+    const out = bufferExports.Buffer.alloc(9);
+    out[0] = 0xff;
+    writeUInt64LE$1(out, BigInt(value), 1);
+    return out;
+}
+function encodeVarSlice$1(buffer) {
+    return bufferExports.Buffer.concat([encodeVarInt$1(buffer.length), buffer]);
+}
+function outpoint(input) {
+    const idx = bufferExports.Buffer.alloc(4);
+    idx.writeUInt32LE(input.index, 0);
+    return bufferExports.Buffer.concat([bufferExports.Buffer.from(input.hash), idx]);
+}
+function sequenceBytes(input) {
+    const seq = bufferExports.Buffer.alloc(4);
+    seq.writeUInt32LE(input.sequence, 0);
+    return seq;
+}
+function outputBytes(output) {
+    const value = bufferExports.Buffer.alloc(8);
+    writeUInt64LE$1(value, BigInt(output.value), 0);
+    return bufferExports.Buffer.concat([value, encodeVarSlice$1(output.script)]);
+}
+function versionBytes(tx) {
+    const b = bufferExports.Buffer.alloc(4);
+    b.writeInt32LE(tx.version, 0);
+    return b;
+}
+function locktimeBytes(tx) {
+    const b = bufferExports.Buffer.alloc(4);
+    b.writeUInt32LE(tx.locktime, 0);
+    return b;
+}
+function uint32LE(value) {
+    const b = bufferExports.Buffer.alloc(4);
+    b.writeUInt32LE(value, 0);
+    return b;
+}
+/**
+ * Contribution of a single set bit to the outer hash buffer. Each handler
+ * returns the bytes that the consensus interpreter concatenates into the
+ * preimage at this bit's position.
+ */
+function contributionFor(tx, bit, inIndex) {
+    switch (bit) {
+        case TXHASH_VERSION:
+            return versionBytes(tx);
+        case TXHASH_LOCKTIME:
+            return locktimeBytes(tx);
+        case TXHASH_INPUT_PREVOUTS:
+            return hash256$1(bufferExports.Buffer.concat(tx.ins.map(outpoint)));
+        case TXHASH_INPUT_SEQUENCES:
+            return hash256$1(bufferExports.Buffer.concat(tx.ins.map(sequenceBytes)));
+        case TXHASH_OUTPUTS:
+            return hash256$1(bufferExports.Buffer.concat(tx.outs.map(outputBytes)));
+        case TXHASH_CURRENT_PREVOUT:
+            if (inIndex < 0 || inIndex >= tx.ins.length) {
+                throw new Error(`computeOpTxHash: inIndex ${inIndex} out of range`);
+            }
+            return outpoint(tx.ins[inIndex]);
+        case TXHASH_CURRENT_SEQUENCE:
+            if (inIndex < 0 || inIndex >= tx.ins.length) {
+                throw new Error(`computeOpTxHash: inIndex ${inIndex} out of range`);
+            }
+            return sequenceBytes(tx.ins[inIndex]);
+        case TXHASH_CURRENT_INDEX:
+            return uint32LE(inIndex);
+        default:
+            throw new Error(`computeOpTxHash: unexpected bit 0x${bit.toString(16)}`);
+    }
+}
+/**
+ * Compute the 32-byte value consensus would push via `OP_TXHASH(selector)`
+ * when the current input being validated is at `inIndex`.
+ *
+ * `selector` is an 8-bit mask. Bits are processed in ascending numeric
+ * order; each set bit contributes its payload (raw scalar or BIP143-style
+ * SHA-256d sub-hash) to the outer preimage, which is then SHA-256d'd.
+ */
+function computeOpTxHash(tx, selector, inIndex, options) {
+    if (!Number.isInteger(selector) || selector < 0 || selector > 0xff) {
+        throw new Error(`computeOpTxHash: selector 0x${selector.toString(16)} out of 8-bit range`);
+    }
+    const parts = [];
+    for (let bitIdx = 0; bitIdx < 8; bitIdx += 1) {
+        const bit = 1 << bitIdx;
+        if ((selector & bit) === 0)
+            continue;
+        const contribution = contributionFor(tx, bit, inIndex);
+        parts.push(contribution);
+    }
+    // Consumer note: with selector 0 this returns SHA-256d of the empty
+    // buffer. Consensus never evaluates that case (OP_TXHASH requires a
+    // non-zero selector on stack per the interpreter), so treating it as a
+    // pure function of selector=0 is a deliberate choice to keep the helper
+    // total and testable.
+    return hash256$1(bufferExports.Buffer.concat(parts));
+}
 
 const xna = {
     mainnet: {
@@ -22263,7 +22507,57 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
                 continue;
             }
             if (hint?.kind === "covenant-cancel-pq") {
-                throw new Error(`covenant-cancel-pq hint for ${txid}:${vout} is not implemented in this build (lands in @neuraiproject/neurai-sign-transaction 1.4.0)`);
+                const split = splitAssetWrappedScriptPubKey(utxo.script);
+                if (!split.assetTransfer) {
+                    throw new Error(`covenant-cancel-pq hint for ${txid}:${vout} requires an asset-wrapped prevout`);
+                }
+                let parsedPQ;
+                try {
+                    parsedPQ = parsePartialFillScriptPQ(split.prefixHex);
+                }
+                catch (err) {
+                    throw new Error(`covenant-cancel-pq hint for ${txid}:${vout} but prefix is not a recognized PQ partial-fill covenant: ${err.message}`);
+                }
+                if (hint.txHashSelector !== parsedPQ.txHashSelector) {
+                    throw new Error(`covenant-cancel-pq selector mismatch for ${txid}:${vout}: hint=0x${hint.txHashSelector.toString(16)}, covenant=0x${parsedPQ.txHashSelector.toString(16)}`);
+                }
+                if (!hasPrivateKeyForAddress(utxo.address)) {
+                    throw new Error(`Missing PQ private key for covenant cancel at ${txid}:${vout} (seller address ${utxo.address})`);
+                }
+                const pqMaterial = getPQMaterialByAddress(utxo.address);
+                const derivedCommitment = sha256(pqMaterial.serializedPublicKey);
+                const covenantCommitment = bufferExports.Buffer.from(parsedPQ.pubKeyCommitment);
+                if (!derivedCommitment.equals(covenantCommitment)) {
+                    throw new Error(`PQ covenant cancel key commitment mismatch for ${txid}:${vout} (got ${derivedCommitment.toString("hex")}, expected ${covenantCommitment.toString("hex")})`);
+                }
+                // §3.5: message to sign is SHA256(OP_TXHASH(selector)). CSFS
+                // internally re-hashes the stack element before verifying, so the
+                // signature input is SHA256(opTxHash) — not opTxHash directly.
+                const opTxHash = computeOpTxHash(tx, parsedPQ.txHashSelector, i);
+                const message = sha256(opTxHash);
+                const rawSig = ml_dsa44.sign(new Uint8Array(message), new Uint8Array(pqMaterial.secretKey), { extraEntropy: false });
+                const sigWithHashType = bufferExports.Buffer.concat([
+                    bufferExports.Buffer.from(rawSig),
+                    bufferExports.Buffer.from([HASH_TYPE]),
+                ]);
+                const scriptSig = srcExports.script.compile([
+                    sigWithHashType,
+                    pqMaterial.serializedPublicKey,
+                    srcExports.opcodes.OP_1,
+                ]);
+                tx.setInputScript(i, scriptSig);
+                debug({
+                    step: "covenant-cancel-pq-signed",
+                    i,
+                    selector: parsedPQ.txHashSelector,
+                    opTxHashHex: opTxHash.toString("hex"),
+                    messageHex: message.toString("hex"),
+                    tokenId: parsedPQ.tokenId,
+                    unitPriceSats: parsedPQ.unitPriceSats.toString(),
+                    assetName: split.assetTransfer.assetName,
+                    amountRaw: split.assetTransfer.amountRaw.toString(),
+                });
+                continue;
             }
             throw new Error(`Unsupported prevout script for ${txid}:${vout}. Only legacy P2PKH and Neurai AuthScript witness v1 are supported`);
         }

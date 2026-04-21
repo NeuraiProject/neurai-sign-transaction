@@ -5,8 +5,10 @@ import * as ecc from "@bitcoinerlab/secp256k1";
 import { ml_dsa44 } from "@noble/post-quantum/ml-dsa.js";
 import {
   parsePartialFillScript,
+  parsePartialFillScriptPQ,
   splitAssetWrappedScriptPubKey,
 } from "@neuraiproject/neurai-scripts";
+import { computeOpTxHash } from "./tx-hash";
 import { xna } from "./coins/xna";
 import { xnaLegacy } from "./coins/xna-legacy";
 import { xnaPQ } from "./coins/xna-pq";
@@ -716,9 +718,77 @@ export function sign(
         continue;
       }
       if (hint?.kind === "covenant-cancel-pq") {
-        throw new Error(
-          `covenant-cancel-pq hint for ${txid}:${vout} is not implemented in this build (lands in @neuraiproject/neurai-sign-transaction 1.4.0)`
+        const split = splitAssetWrappedScriptPubKey(utxo.script);
+        if (!split.assetTransfer) {
+          throw new Error(
+            `covenant-cancel-pq hint for ${txid}:${vout} requires an asset-wrapped prevout`
+          );
+        }
+
+        let parsedPQ;
+        try {
+          parsedPQ = parsePartialFillScriptPQ(split.prefixHex);
+        } catch (err) {
+          throw new Error(
+            `covenant-cancel-pq hint for ${txid}:${vout} but prefix is not a recognized PQ partial-fill covenant: ${(err as Error).message}`
+          );
+        }
+
+        if (hint.txHashSelector !== parsedPQ.txHashSelector) {
+          throw new Error(
+            `covenant-cancel-pq selector mismatch for ${txid}:${vout}: hint=0x${hint.txHashSelector.toString(16)}, covenant=0x${parsedPQ.txHashSelector.toString(16)}`
+          );
+        }
+
+        if (!hasPrivateKeyForAddress(utxo.address)) {
+          throw new Error(
+            `Missing PQ private key for covenant cancel at ${txid}:${vout} (seller address ${utxo.address})`
+          );
+        }
+
+        const pqMaterial = getPQMaterialByAddress(utxo.address);
+        const derivedCommitment = sha256(pqMaterial.serializedPublicKey);
+        const covenantCommitment = Buffer.from(parsedPQ.pubKeyCommitment);
+        if (!derivedCommitment.equals(covenantCommitment)) {
+          throw new Error(
+            `PQ covenant cancel key commitment mismatch for ${txid}:${vout} (got ${derivedCommitment.toString("hex")}, expected ${covenantCommitment.toString("hex")})`
+          );
+        }
+
+        // §3.5: message to sign is SHA256(OP_TXHASH(selector)). CSFS
+        // internally re-hashes the stack element before verifying, so the
+        // signature input is SHA256(opTxHash) — not opTxHash directly.
+        const opTxHash = computeOpTxHash(tx, parsedPQ.txHashSelector, i);
+        const message = sha256(opTxHash);
+
+        const rawSig = ml_dsa44.sign(
+          new Uint8Array(message),
+          new Uint8Array(pqMaterial.secretKey),
+          { extraEntropy: false }
         );
+        const sigWithHashType = Buffer.concat([
+          Buffer.from(rawSig),
+          Buffer.from([HASH_TYPE]),
+        ]);
+
+        const scriptSig = bitcoin.script.compile([
+          sigWithHashType,
+          pqMaterial.serializedPublicKey,
+          bitcoin.opcodes.OP_1,
+        ]);
+        tx.setInputScript(i, scriptSig);
+        debug({
+          step: "covenant-cancel-pq-signed",
+          i,
+          selector: parsedPQ.txHashSelector,
+          opTxHashHex: opTxHash.toString("hex"),
+          messageHex: message.toString("hex"),
+          tokenId: parsedPQ.tokenId,
+          unitPriceSats: parsedPQ.unitPriceSats.toString(),
+          assetName: split.assetTransfer.assetName,
+          amountRaw: split.assetTransfer.amountRaw.toString(),
+        });
+        continue;
       }
       throw new Error(
         `Unsupported prevout script for ${txid}:${vout}. Only legacy P2PKH and Neurai AuthScript witness v1 are supported`
