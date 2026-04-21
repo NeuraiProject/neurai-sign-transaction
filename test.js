@@ -844,3 +844,217 @@ test("Verify browser build does not contain Node require residuals", () => {
   expect(browserBundle.includes("node:path")).toBe(false);
   expect(browserBundle.includes("node:stream")).toBe(false);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Covenant-cancel-legacy (partial-fill sell order, v2 plan Fase B.1)
+// ─────────────────────────────────────────────────────────────────────────
+
+const NeuraiScripts = require("@neuraiproject/neurai-scripts");
+const ecpairMod = require("ecpair");
+const ECPairFactoryCancel = ecpairMod.ECPairFactory || ecpairMod.default.ECPairFactory;
+const eccCancel = require("@bitcoinerlab/secp256k1");
+const ECPairCancel = ECPairFactoryCancel(eccCancel);
+
+// Neurai testnet params (mirrors src/coins/xna.ts testnet).
+const XNA_TESTNET = {
+  messagePrefix: "\x16Neurai Signed Message:\n",
+  bech32: "",
+  bip32: { public: 0x043587cf, private: 0x04358394 },
+  pubKeyHash: 127,
+  scriptHash: 196,
+  wif: 239,
+};
+
+function hash160Node(buffer) {
+  return bitcoin.crypto.hash160(buffer);
+}
+
+function encodeAssetPayloadHex(assetName, amountRaw) {
+  const name = Buffer.from(assetName, "ascii");
+  const nameLen = Buffer.from([name.length]);
+  const amt = Buffer.alloc(8);
+  amt.writeBigUInt64LE(BigInt(amountRaw), 0);
+  return Buffer.concat([
+    Buffer.from([0x72, 0x76, 0x6e, 0x74]), // "rvn" + transfer marker
+    nameLen,
+    name,
+    amt,
+  ]).toString("hex");
+}
+
+function encodeWrappedSpkHex(prefixHex, payloadHex) {
+  const payloadBuf = Buffer.from(payloadHex, "hex");
+  if (payloadBuf.length > 0x4b) {
+    throw new Error("payload too long for short push in test helper");
+  }
+  return (
+    prefixHex +
+    "c0" + // OP_XNA_ASSET
+    payloadBuf.length.toString(16).padStart(2, "0") +
+    payloadHex +
+    "75" // OP_DROP
+  );
+}
+
+function buildCancelFixture(opts) {
+  const sellerKeyPair = opts.sellerKeyPair;
+  const sellerPubkey = Buffer.from(sellerKeyPair.publicKey);
+  const sellerPKH = hash160Node(sellerPubkey);
+
+  // Build partial-fill covenant script (bare, no wrapper).
+  // paymentAddress must be the seller's own P2PKH address — encode it
+  // from the PKH using the xna-test network byte.
+  const sellerP2PKHAddr = bitcoin.address.toBase58Check(sellerPKH, XNA_TESTNET.pubKeyHash);
+  const covenantHex = NeuraiScripts.buildPartialFillScriptHex({
+    sellerAddress: sellerP2PKHAddr,
+    tokenId: "CAT",
+    unitPriceSats: 100000000n,
+  });
+
+  // Wrap with asset payload.
+  const payloadHex = encodeAssetPayloadHex("TREST", 10000000000n);
+  const wrappedSpkHex = encodeWrappedSpkHex(covenantHex, payloadHex);
+
+  // Build unsigned tx: 1 input from covenant UTXO, 1 output back to seller
+  // with the same asset transfer wrapping a P2PKH (a minimal cancel shape).
+  const prevTxid = Buffer.from("33".repeat(32), "hex");
+  const unsignedTx = new bitcoin.Transaction();
+  unsignedTx.version = 2;
+  unsignedTx.locktime = 0;
+  unsignedTx.addInput(prevTxid, 0, 0xfffffffe, Buffer.alloc(0));
+
+  const sellerP2PKHSpk = bitcoin.script.compile([
+    bitcoin.opcodes.OP_DUP,
+    bitcoin.opcodes.OP_HASH160,
+    sellerPKH,
+    bitcoin.opcodes.OP_EQUALVERIFY,
+    bitcoin.opcodes.OP_CHECKSIG,
+  ]);
+  const refundWrapped = Buffer.from(
+    encodeWrappedSpkHex(sellerP2PKHSpk.toString("hex"), payloadHex),
+    "hex"
+  );
+  unsignedTx.addOutput(refundWrapped, 1000);
+
+  const rawUnsignedTx = unsignedTx.toHex();
+
+  const sellerAddressLabel = "covenant-seller";
+  return {
+    network: "xna-test",
+    rawUnsignedTx,
+    covenantWrappedSpkHex: wrappedSpkHex,
+    covenantPrefixHex: covenantHex,
+    sellerAddressLabel,
+    sellerKeyPair,
+    sellerPubkey,
+    sellerPKH,
+    sellerP2PKHAddr,
+    utxo: {
+      address: sellerAddressLabel,
+      assetName: "TREST",
+      txid: prevTxid.reverse().toString("hex"),
+      outputIndex: 0,
+      script: wrappedSpkHex,
+      satoshis: 10000000000,
+      value: 10000000000,
+      bareScriptHint: { kind: "covenant-cancel-legacy" },
+    },
+    privateKeys: { [sellerAddressLabel]: sellerKeyPair.toWIF() },
+  };
+}
+
+test("Covenant cancel legacy — happy path", () => {
+  const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const fx = buildCancelFixture({ sellerKeyPair });
+
+  const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+
+  // scriptSig must decode to [sig, pubkey, OP_1]
+  expect(signedTx.ins).toHaveLength(1);
+  expect(signedTx.ins[0].witness).toHaveLength(0);
+  const chunks = bitcoin.script.decompile(signedTx.ins[0].script);
+  expect(chunks).not.toBeNull();
+  expect(chunks).toHaveLength(3);
+  const [sigChunk, pubChunk, opOne] = chunks;
+  expect(Buffer.isBuffer(sigChunk)).toBe(true);
+  expect(Buffer.isBuffer(pubChunk)).toBe(true);
+  expect(pubChunk.equals(fx.sellerPubkey)).toBe(true);
+  expect(opOne).toBe(bitcoin.opcodes.OP_1);
+
+  // Signature must verify against the FULL wrapped scriptPubKey.
+  const fullSpk = Buffer.from(fx.covenantWrappedSpkHex, "hex");
+  const sighash = signedTx.hashForSignature(0, fullSpk, bitcoin.Transaction.SIGHASH_ALL);
+  const sigDecoded = bitcoin.script.signature.decode(sigChunk);
+  expect(sigDecoded.hashType).toBe(bitcoin.Transaction.SIGHASH_ALL);
+  expect(sellerKeyPair.verify(sighash, sigDecoded.signature)).toBe(true);
+
+  // Signing without the wrapper in the sighash must produce a different hash
+  // → proves the wrapper bytes participate in sighash, per the plan §3.4.
+  const sighashBare = signedTx.hashForSignature(
+    0,
+    Buffer.from(fx.covenantPrefixHex, "hex"),
+    bitcoin.Transaction.SIGHASH_ALL
+  );
+  expect(sighash.equals(sighashBare)).toBe(false);
+});
+
+test("Covenant cancel legacy — rejects bare (non-wrapped) prevout", () => {
+  const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const fx = buildCancelFixture({ sellerKeyPair });
+  const bareUtxo = { ...fx.utxo, script: fx.covenantPrefixHex };
+
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [bareUtxo], fx.privateKeys)).toThrow(
+    /requires an asset-wrapped prevout/
+  );
+});
+
+test("Covenant cancel legacy — rejects wrapper whose prefix is not a covenant", () => {
+  const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const fx = buildCancelFixture({ sellerKeyPair });
+
+  // Build a prefix that is neither P2PKH (isLegacyScript) nor AuthScript
+  // witness v1 (isPQScript) — starting with OP_IF like a covenant would,
+  // but with a deliberately wrong body. This forces the hint branch to
+  // run and `parsePartialFillScript` to fail.
+  const malformedCovenantHex =
+    "63" + // OP_IF
+    "76a914" + fx.sellerPKH.toString("hex") + "88ac" + // dup hash160 <pkh> equalverify checksig
+    "68"; // OP_ENDIF — missing the whole fill-branch body
+  const wrappedBad = encodeWrappedSpkHex(
+    malformedCovenantHex,
+    encodeAssetPayloadHex("TREST", 10000000000n)
+  );
+  const badUtxo = { ...fx.utxo, script: wrappedBad };
+
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [badUtxo], fx.privateKeys)).toThrow(
+    /not a recognized partial-fill covenant/
+  );
+});
+
+test("Covenant cancel legacy — rejects when caller key does not match covenant sellerPKH", () => {
+  const realSeller = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const fx = buildCancelFixture({ sellerKeyPair: realSeller });
+
+  // Swap the WIF for a DIFFERENT random keypair but keep the address label
+  // untouched — this simulates an attacker / misconfigured caller.
+  const imposter = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const keys = { [fx.sellerAddressLabel]: imposter.toWIF() };
+
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], keys)).toThrow(
+    /does not match the covenant sellerPubKeyHash/
+  );
+});
+
+test("Covenant cancel PQ hint — rejected as not implemented in 1.3.x", () => {
+  const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const fx = buildCancelFixture({ sellerKeyPair });
+  const pqHintUtxo = {
+    ...fx.utxo,
+    bareScriptHint: { kind: "covenant-cancel-pq", txHashSelector: 0xff },
+  };
+
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [pqHintUtxo], fx.privateKeys)).toThrow(
+    /lands in @neuraiproject\/neurai-sign-transaction 1\.4\.0/
+  );
+});

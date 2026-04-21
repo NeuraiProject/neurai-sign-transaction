@@ -3,6 +3,10 @@ import { Buffer } from "buffer";
 import { ECPairFactory } from "ecpair";
 import * as ecc from "@bitcoinerlab/secp256k1";
 import { ml_dsa44 } from "@noble/post-quantum/ml-dsa.js";
+import {
+  parsePartialFillScript,
+  splitAssetWrappedScriptPubKey,
+} from "@neuraiproject/neurai-scripts";
 import { xna } from "./coins/xna";
 import { xnaLegacy } from "./coins/xna-legacy";
 import { xnaPQ } from "./coins/xna-pq";
@@ -90,15 +94,36 @@ type PQChainNetwork = {
   };
 };
 
+/**
+ * Hint that unlocks signing of a bare-script prevout that is not a
+ * recognised legacy P2PKH nor a Neurai AuthScript witness v1. The library
+ * only honours hints for the two partial-fill covenant cancel branches —
+ * every other shape is still rejected.
+ */
+export type BareScriptSigningHint =
+  | { kind: "covenant-cancel-legacy" }
+  | { kind: "covenant-cancel-pq"; txHashSelector: number };
+
 export interface IUTXO {
   address: string;
   assetName: string;
   txid: string;
   outputIndex: number;
+  /**
+   * scriptPubKey of the prevout as hex. For asset UTXOs this includes the
+   * trailing `OP_XNA_ASSET <pushdata(payload)> OP_DROP` wrapper; the
+   * library strips the wrapper internally when a covenant-cancel hint is
+   * supplied.
+   */
   script: string;
   satoshis: number;
   height?: number;
   value: number;
+  /**
+   * Optional signing hint for non-standard prevouts (currently: partial-fill
+   * covenant cancel branches). Ignored for recognised legacy/PQ prevouts.
+   */
+  bareScriptHint?: BareScriptSigningHint;
 }
 
 function toBitcoinJS(network: ChainNetwork): bitcoin.Network {
@@ -634,6 +659,67 @@ export function sign(
     });
 
     if (!inputIsLegacy && !inputIsPQ) {
+      const hint = utxo.bareScriptHint;
+      if (hint?.kind === "covenant-cancel-legacy") {
+        const split = splitAssetWrappedScriptPubKey(utxo.script);
+        if (!split.assetTransfer) {
+          throw new Error(
+            `covenant-cancel-legacy hint for ${txid}:${vout} requires an asset-wrapped prevout`
+          );
+        }
+
+        let parsed;
+        try {
+          parsed = parsePartialFillScript(split.prefixHex);
+        } catch (err) {
+          throw new Error(
+            `covenant-cancel-legacy hint for ${txid}:${vout} but prefix is not a recognized partial-fill covenant: ${(err as Error).message}`
+          );
+        }
+
+        if (!hasPrivateKeyForAddress(utxo.address)) {
+          throw new Error(
+            `Missing private key for covenant cancel at ${txid}:${vout} (seller address ${utxo.address})`
+          );
+        }
+
+        const keyPair = getKeyPairByAddress(utxo.address);
+        const derivedPKH = hash160(Buffer.from(keyPair.publicKey));
+        const covenantPKH = Buffer.from(parsed.sellerPubKeyHash);
+        if (!derivedPKH.equals(covenantPKH)) {
+          throw new Error(
+            `covenant cancel key for ${txid}:${vout} does not match the covenant sellerPubKeyHash (got ${derivedPKH.toString("hex")}, expected ${covenantPKH.toString("hex")})`
+          );
+        }
+
+        const sighash = tx.hashForSignature(i, scriptPubKey, HASH_TYPE);
+        const rawSignature = keyPair.sign(sighash);
+        const signatureWithHashType = bitcoin.script.signature.encode(
+          Buffer.from(rawSignature),
+          HASH_TYPE
+        );
+        const scriptSig = bitcoin.script.compile([
+          signatureWithHashType,
+          Buffer.from(keyPair.publicKey),
+          bitcoin.opcodes.OP_1,
+        ]);
+        tx.setInputScript(i, scriptSig);
+        debug({
+          step: "covenant-cancel-legacy-signed",
+          i,
+          prefixLen: split.prefixHex.length / 2,
+          tokenId: parsed.tokenId,
+          unitPriceSats: parsed.unitPriceSats.toString(),
+          assetName: split.assetTransfer.assetName,
+          amountRaw: split.assetTransfer.amountRaw.toString(),
+        });
+        continue;
+      }
+      if (hint?.kind === "covenant-cancel-pq") {
+        throw new Error(
+          `covenant-cancel-pq hint for ${txid}:${vout} is not implemented in this build (lands in @neuraiproject/neurai-sign-transaction 1.4.0)`
+        );
+      }
       throw new Error(
         `Unsupported prevout script for ${txid}:${vout}. Only legacy P2PKH and Neurai AuthScript witness v1 are supported`
       );
