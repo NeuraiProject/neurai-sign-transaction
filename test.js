@@ -846,16 +846,26 @@ test("Verify browser build does not contain Node require residuals", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// Covenant-cancel-legacy (partial-fill sell order, v2 plan Fase B.1)
+// Covenant cancel via AuthScript-NOAUTH witness spend (v3 architecture)
 // ─────────────────────────────────────────────────────────────────────────
+//
+// Consensus only accepts asset-wrapped scriptPubKeys with a 25-byte P2PKH
+// or 34-byte AuthScript-v1 prefix (see `tx_verify.cpp::IsAssetScript`), so
+// a covenant UTXO on-chain is always `OP_1 0x20 <commitment> OP_XNA_ASSET
+// <payload> OP_DROP`. The covenant itself lives in the spend WITNESS as
+// the AuthScript-NOAUTH witness script. These tests verify the library
+// produces the correct witness stack (NOT a bare scriptSig) and signs the
+// right sighash for each branch.
 
 const NeuraiScripts = require("@neuraiproject/neurai-scripts");
 const ecpairMod = require("ecpair");
 const ECPairFactoryCancel = ecpairMod.ECPairFactory || ecpairMod.default.ECPairFactory;
 const eccCancel = require("@bitcoinerlab/secp256k1");
 const ECPairCancel = ECPairFactoryCancel(eccCancel);
+const { ml_dsa44 } = require("@noble/post-quantum/ml-dsa.js");
+const nobleHashes = require("@noble/hashes/sha2.js");
+const sha256Sync = nobleHashes.sha256 || nobleHashes.default?.sha256;
 
-// Neurai testnet params (mirrors src/coins/xna.ts testnet).
 const XNA_TESTNET = {
   messagePrefix: "\x16Neurai Signed Message:\n",
   bech32: "",
@@ -865,199 +875,208 @@ const XNA_TESTNET = {
   wif: 239,
 };
 
-function hash160Node(buffer) {
-  return bitcoin.crypto.hash160(buffer);
-}
+function hash160Node(buffer) { return bitcoin.crypto.hash160(buffer); }
 
 function encodeAssetPayloadHex(assetName, amountRaw) {
   const name = Buffer.from(assetName, "ascii");
-  const nameLen = Buffer.from([name.length]);
   const amt = Buffer.alloc(8);
   amt.writeBigUInt64LE(BigInt(amountRaw), 0);
   return Buffer.concat([
-    Buffer.from([0x72, 0x76, 0x6e, 0x74]), // "rvn" + transfer marker
-    nameLen,
+    Buffer.from([0x72, 0x76, 0x6e, 0x74]),
+    Buffer.from([name.length]),
     name,
     amt,
   ]).toString("hex");
 }
 
-function encodeWrappedSpkHex(prefixHex, payloadHex) {
+function appendAssetWrapper(prefixHex, payloadHex) {
   const payloadBuf = Buffer.from(payloadHex, "hex");
-  if (payloadBuf.length > 0x4b) {
-    throw new Error("payload too long for short push in test helper");
-  }
-  return (
-    prefixHex +
-    "c0" + // OP_XNA_ASSET
-    payloadBuf.length.toString(16).padStart(2, "0") +
-    payloadHex +
-    "75" // OP_DROP
-  );
+  return prefixHex + "c0" + payloadBuf.length.toString(16).padStart(2, "0") + payloadHex + "75";
 }
 
-function buildCancelFixture(opts) {
-  const sellerKeyPair = opts.sellerKeyPair;
-  const sellerPubkey = Buffer.from(sellerKeyPair.publicKey);
-  const sellerPKH = hash160Node(sellerPubkey);
+function taggedHashSync(tag, msg) {
+  const th = Buffer.from(sha256Sync(new Uint8Array(Buffer.from(tag, "utf8"))));
+  return Buffer.from(sha256Sync(new Uint8Array(Buffer.concat([th, th, msg]))));
+}
 
-  // Build partial-fill covenant script (bare, no wrapper).
-  // paymentAddress must be the seller's own P2PKH address — encode it
-  // from the PKH using the xna-test network byte.
-  const sellerP2PKHAddr = bitcoin.address.toBase58Check(sellerPKH, XNA_TESTNET.pubKeyHash);
-  const covenantHex = NeuraiScripts.buildPartialFillScriptHex({
-    sellerAddress: sellerP2PKHAddr,
-    tokenId: "CAT",
-    unitPriceSats: 100000000n,
-  });
-
-  // Wrap with asset payload.
-  const payloadHex = encodeAssetPayloadHex("TREST", 10000000000n);
-  const wrappedSpkHex = encodeWrappedSpkHex(covenantHex, payloadHex);
-
-  // Build unsigned tx: 1 input from covenant UTXO, 1 output back to seller
-  // with the same asset transfer wrapping a P2PKH (a minimal cancel shape).
-  const prevTxid = Buffer.from("33".repeat(32), "hex");
-  const unsignedTx = new bitcoin.Transaction();
-  unsignedTx.version = 2;
-  unsignedTx.locktime = 0;
-  unsignedTx.addInput(prevTxid, 0, 0xfffffffe, Buffer.alloc(0));
-
-  const sellerP2PKHSpk = bitcoin.script.compile([
-    bitcoin.opcodes.OP_DUP,
-    bitcoin.opcodes.OP_HASH160,
-    sellerPKH,
-    bitcoin.opcodes.OP_EQUALVERIFY,
-    bitcoin.opcodes.OP_CHECKSIG,
+/**
+ * Compute the AuthScript-v1 commitment for a NOAUTH witness script, matching
+ * the consensus `GetAuthScriptCommitment(0x00, nullptr, witnessScript)`.
+ */
+function authScriptNoAuthCommitment(witnessScript) {
+  const witnessScriptHash = Buffer.from(sha256Sync(new Uint8Array(witnessScript)));
+  const preimage = Buffer.concat([
+    Buffer.from([0x01]), // AUTHSCRIPT_VERSION
+    Buffer.from([0x00]), // authDescriptor for NOAUTH = single 0x00 byte
+    witnessScriptHash,
   ]);
-  const refundWrapped = Buffer.from(
-    encodeWrappedSpkHex(sellerP2PKHSpk.toString("hex"), payloadHex),
-    "hex"
-  );
-  unsignedTx.addOutput(refundWrapped, 1000);
+  return taggedHashSync("NeuraiAuthScript", preimage);
+}
 
-  const rawUnsignedTx = unsignedTx.toHex();
-
-  const sellerAddressLabel = "covenant-seller";
+function wrapCovenantScriptPubKey(covenantBytes, assetName, amountRaw) {
+  const commitment = authScriptNoAuthCommitment(covenantBytes);
+  const authscriptPrefix = Buffer.concat([Buffer.from([0x51, 0x20]), commitment]);
+  const payloadHex = encodeAssetPayloadHex(assetName, amountRaw);
   return {
-    network: "xna-test",
-    rawUnsignedTx,
-    covenantWrappedSpkHex: wrappedSpkHex,
-    covenantPrefixHex: covenantHex,
-    sellerAddressLabel,
-    sellerKeyPair,
-    sellerPubkey,
-    sellerPKH,
-    sellerP2PKHAddr,
-    utxo: {
-      address: sellerAddressLabel,
-      assetName: "TREST",
-      txid: prevTxid.reverse().toString("hex"),
-      outputIndex: 0,
-      script: wrappedSpkHex,
-      satoshis: 10000000000,
-      value: 10000000000,
-      bareScriptHint: { kind: "covenant-cancel-legacy" },
-    },
-    privateKeys: { [sellerAddressLabel]: sellerKeyPair.toWIF() },
+    wrappedSpkHex: appendAssetWrapper(authscriptPrefix.toString("hex"), payloadHex),
+    commitment,
+    authscriptPrefix,
   };
 }
 
-test("Covenant cancel legacy — happy path", () => {
+function buildSpendTx(prevoutTxidBuf, refundSpk) {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.locktime = 0;
+  tx.addInput(prevoutTxidBuf, 0, 0xfffffffe, Buffer.alloc(0));
+  tx.addOutput(refundSpk, 0);
+  return tx;
+}
+
+// ── Legacy covenant cancel ─────────────────────────────────────────────────
+
+function buildLegacyCancelFixture(opts) {
+  const sellerKeyPair = opts.sellerKeyPair;
+  const sellerPubkey = Buffer.from(sellerKeyPair.publicKey);
+  const sellerPKH = hash160Node(sellerPubkey);
+  const sellerAddr = bitcoin.address.toBase58Check(sellerPKH, XNA_TESTNET.pubKeyHash);
+
+  const covenantHex = NeuraiScripts.buildPartialFillScriptHex({
+    sellerAddress: sellerAddr,
+    tokenId: "CAT",
+    unitPriceSats: 100000000n,
+  });
+  const covenantBytes = Buffer.from(covenantHex, "hex");
+  const wrap = wrapCovenantScriptPubKey(covenantBytes, "TREST", 10000000000n);
+
+  const sellerP2PKHSpk = bitcoin.script.compile([
+    bitcoin.opcodes.OP_DUP, bitcoin.opcodes.OP_HASH160, sellerPKH,
+    bitcoin.opcodes.OP_EQUALVERIFY, bitcoin.opcodes.OP_CHECKSIG,
+  ]);
+  const refundWrappedHex = appendAssetWrapper(
+    sellerP2PKHSpk.toString("hex"),
+    encodeAssetPayloadHex("TREST", 10000000000n)
+  );
+  const prevTxid = Buffer.from("33".repeat(32), "hex");
+  const tx = buildSpendTx(prevTxid, Buffer.from(refundWrappedHex, "hex"));
+
+  return {
+    network: "xna-test",
+    rawUnsignedTx: tx.toHex(),
+    covenantHex,
+    covenantBytes,
+    wrappedSpkHex: wrap.wrappedSpkHex,
+    commitment: wrap.commitment,
+    sellerKeyPair,
+    sellerPubkey,
+    sellerPKH,
+    sellerAddr,
+    utxo: {
+      address: "covenant-seller",
+      assetName: "TREST",
+      txid: prevTxid.reverse().toString("hex"),
+      outputIndex: 0,
+      script: wrap.wrappedSpkHex,
+      satoshis: 0,     // asset UTXOs carry 0 XNA value
+      value: 0,
+      bareScriptHint: { kind: "covenant-cancel-legacy", covenantScriptHex: covenantHex },
+    },
+    privateKeys: { "covenant-seller": sellerKeyPair.toWIF() },
+  };
+}
+
+test("Covenant cancel legacy — happy path produces a NOAUTH witness spend", () => {
   const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
-  const fx = buildCancelFixture({ sellerKeyPair });
+  const fx = buildLegacyCancelFixture({ sellerKeyPair });
 
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
   const signedTx = bitcoin.Transaction.fromHex(signedHex);
 
-  // scriptSig must decode to [sig, pubkey, OP_1]
-  expect(signedTx.ins).toHaveLength(1);
-  expect(signedTx.ins[0].witness).toHaveLength(0);
-  const chunks = bitcoin.script.decompile(signedTx.ins[0].script);
-  expect(chunks).not.toBeNull();
-  expect(chunks).toHaveLength(3);
-  const [sigChunk, pubChunk, opOne] = chunks;
-  expect(Buffer.isBuffer(sigChunk)).toBe(true);
-  expect(Buffer.isBuffer(pubChunk)).toBe(true);
-  expect(pubChunk.equals(fx.sellerPubkey)).toBe(true);
-  expect(opOne).toBe(bitcoin.opcodes.OP_1);
-
-  // Signature must verify against the FULL wrapped scriptPubKey.
-  const fullSpk = Buffer.from(fx.covenantWrappedSpkHex, "hex");
-  const sighash = signedTx.hashForSignature(0, fullSpk, bitcoin.Transaction.SIGHASH_ALL);
-  const sigDecoded = bitcoin.script.signature.decode(sigChunk);
-  expect(sigDecoded.hashType).toBe(bitcoin.Transaction.SIGHASH_ALL);
-  expect(sellerKeyPair.verify(sighash, sigDecoded.signature)).toBe(true);
-
-  // Signing without the wrapper in the sighash must produce a different hash
-  // → proves the wrapper bytes participate in sighash, per the plan §3.4.
-  const sighashBare = signedTx.hashForSignature(
-    0,
-    Buffer.from(fx.covenantPrefixHex, "hex"),
-    bitcoin.Transaction.SIGHASH_ALL
-  );
-  expect(sighash.equals(sighashBare)).toBe(false);
+  // scriptSig MUST be empty (witness-v1 spend). Witness MUST be
+  // [NOAUTH_TYPE, sig+hashtype, pubkey, OP_1 selector, covenantBytes].
+  expect(signedTx.ins[0].script.length).toBe(0);
+  const witness = signedTx.ins[0].witness;
+  expect(witness).toHaveLength(5);
+  expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);            // NOAUTH
+  expect(witness[2].equals(fx.sellerPubkey)).toBe(true);               // pubkey
+  expect(witness[3].equals(Buffer.from([0x01]))).toBe(true);            // OP_IF selector
+  expect(witness[4].equals(fx.covenantBytes)).toBe(true);               // witness script
 });
 
-test("Covenant cancel legacy — rejects bare (non-wrapped) prevout", () => {
+test("Covenant cancel legacy — rejects when hint.covenantScriptHex does not hash to the commitment", () => {
   const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
-  const fx = buildCancelFixture({ sellerKeyPair });
-  const bareUtxo = { ...fx.utxo, script: fx.covenantPrefixHex };
+  const fx = buildLegacyCancelFixture({ sellerKeyPair });
 
-  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [bareUtxo], fx.privateKeys)).toThrow(
-    /requires an asset-wrapped prevout/
-  );
-});
-
-test("Covenant cancel legacy — rejects wrapper whose prefix is not a covenant", () => {
-  const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
-  const fx = buildCancelFixture({ sellerKeyPair });
-
-  // Build a prefix that is neither P2PKH (isLegacyScript) nor AuthScript
-  // witness v1 (isPQScript) — starting with OP_IF like a covenant would,
-  // but with a deliberately wrong body. This forces the hint branch to
-  // run and `parsePartialFillScript` to fail.
-  const malformedCovenantHex =
-    "63" + // OP_IF
-    "76a914" + fx.sellerPKH.toString("hex") + "88ac" + // dup hash160 <pkh> equalverify checksig
-    "68"; // OP_ENDIF — missing the whole fill-branch body
-  const wrappedBad = encodeWrappedSpkHex(
-    malformedCovenantHex,
-    encodeAssetPayloadHex("TREST", 10000000000n)
-  );
-  const badUtxo = { ...fx.utxo, script: wrappedBad };
+  // Flip a byte in the hint's covenantScriptHex so SHA256(covenant) changes
+  // and the commitment verification must fail.
+  const tampered = fx.covenantHex.slice(0, -2) + ((parseInt(fx.covenantHex.slice(-2), 16) ^ 0xff)
+    .toString(16).padStart(2, "0"));
+  const badUtxo = {
+    ...fx.utxo,
+    bareScriptHint: { kind: "covenant-cancel-legacy", covenantScriptHex: tampered },
+  };
 
   expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [badUtxo], fx.privateKeys)).toThrow(
-    /not a recognized partial-fill covenant/
+    /commitment mismatch/
   );
 });
 
-test("Covenant cancel legacy — rejects when caller key does not match covenant sellerPKH", () => {
-  const realSeller = ECPairCancel.makeRandom({ network: XNA_TESTNET });
-  const fx = buildCancelFixture({ sellerKeyPair: realSeller });
+test("Covenant cancel legacy — rejects when covenantScriptHex is not a partial-fill covenant", () => {
+  const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const fx = buildLegacyCancelFixture({ sellerKeyPair });
 
-  // Swap the WIF for a DIFFERENT random keypair but keep the address label
-  // untouched — this simulates an attacker / misconfigured caller.
+  // Use junk for the covenant bytes — but wrap a UTXO whose commitment
+  // still matches so we get past the commitment check and hit the parser.
+  const junkCovenantHex = "63" + "76a914" + fx.sellerPKH.toString("hex") + "88ac" + "68";
+  const junkBytes = Buffer.from(junkCovenantHex, "hex");
+  const wrap = wrapCovenantScriptPubKey(junkBytes, "TREST", 10000000000n);
+  const badUtxo = {
+    ...fx.utxo,
+    script: wrap.wrappedSpkHex,
+    bareScriptHint: { kind: "covenant-cancel-legacy", covenantScriptHex: junkCovenantHex },
+  };
+
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [badUtxo], fx.privateKeys)).toThrow(
+    /not a legacy partial-fill covenant/
+  );
+});
+
+test("Covenant cancel legacy — rejects when caller key does not match sellerPubKeyHash", () => {
+  const realSeller = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const fx = buildLegacyCancelFixture({ sellerKeyPair: realSeller });
   const imposter = ECPairCancel.makeRandom({ network: XNA_TESTNET });
-  const keys = { [fx.sellerAddressLabel]: imposter.toWIF() };
+  const keys = { "covenant-seller": imposter.toWIF() };
 
   expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], keys)).toThrow(
     /does not match the covenant sellerPubKeyHash/
   );
 });
 
-// ─────────────────────────────────────────────────────────────────────────
-// Covenant-cancel-pq + computeOpTxHash (Fase B.2)
-// ─────────────────────────────────────────────────────────────────────────
+test("Covenant cancel hint rejected on a non-AuthScript-v1 prevout", () => {
+  const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const fx = buildLegacyCancelFixture({ sellerKeyPair });
 
-const { ml_dsa44 } = require("@noble/post-quantum/ml-dsa.js");
-const nobleHashes = require("@noble/hashes/sha2.js");
-const sha256Sync = nobleHashes.sha256 || nobleHashes.default?.sha256;
+  // Build a UTXO whose scriptPubKey is a bare P2PKH (isLegacyScript=true).
+  const p2pkh = bitcoin.script.compile([
+    bitcoin.opcodes.OP_DUP, bitcoin.opcodes.OP_HASH160, fx.sellerPKH,
+    bitcoin.opcodes.OP_EQUALVERIFY, bitcoin.opcodes.OP_CHECKSIG,
+  ]).toString("hex");
+  const badUtxo = { ...fx.utxo, script: p2pkh };
 
-function buildCancelPQFixture(opts) {
-  const seed = opts.seedHex
-    ? Buffer.from(opts.seedHex, "hex")
-    : Buffer.from("07".repeat(32), "hex");
+  // Covenant-cancel hints only work on AuthScript-v1-wrapped prevouts;
+  // the library must NOT try to use a legacy P2PKH prevout as a covenant.
+  // Instead, it falls through to the normal legacy signing path, which
+  // succeeds (the prevout IS a valid P2PKH). The witness stays empty.
+  const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [badUtxo], fx.privateKeys);
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  expect(signedTx.ins[0].witness).toHaveLength(0);
+  expect(signedTx.ins[0].script.length).toBeGreaterThan(0);
+});
+
+// ── PQ covenant cancel ─────────────────────────────────────────────────────
+
+function buildPQCancelFixture(opts) {
+  const seed = opts.seedHex ? Buffer.from(opts.seedHex, "hex") : Buffer.from("07".repeat(32), "hex");
   const keyPair = ml_dsa44.keygen(new Uint8Array(seed));
   const publicKey = Buffer.from(keyPair.publicKey);
   const serializedPublicKey = Buffer.concat([Buffer.from([0x05]), publicKey]);
@@ -1075,151 +1094,105 @@ function buildCancelPQFixture(opts) {
     unitPriceSats: 100000000n,
     txHashSelector: selector,
   });
+  const covenantBytes = Buffer.from(covenantHex, "hex");
+  const wrap = wrapCovenantScriptPubKey(covenantBytes, "TREST", 10000000000n);
 
-  const payloadHex = encodeAssetPayloadHex("TREST", 10000000000n);
-  const wrappedSpkHex = encodeWrappedSpkHex(covenantHex, payloadHex);
-
-  const prevTxid = Buffer.from("44".repeat(32), "hex");
-  const unsignedTx = new bitcoin.Transaction();
-  unsignedTx.version = 2;
-  unsignedTx.locktime = 0;
-  unsignedTx.addInput(prevTxid, 0, 0xfffffffe, Buffer.alloc(0));
-
-  // Refund to a P2PKH wrapping the same asset — shape the addon recognises.
+  // Refund to a P2PKH (wrapped with asset transfer) — doesn't matter whose.
   const refundKey = ECPairCancel.makeRandom({ network: XNA_TESTNET });
   const refundPKH = bitcoin.crypto.hash160(Buffer.from(refundKey.publicKey));
   const refundSpk = bitcoin.script.compile([
-    bitcoin.opcodes.OP_DUP,
-    bitcoin.opcodes.OP_HASH160,
-    refundPKH,
-    bitcoin.opcodes.OP_EQUALVERIFY,
-    bitcoin.opcodes.OP_CHECKSIG,
+    bitcoin.opcodes.OP_DUP, bitcoin.opcodes.OP_HASH160, refundPKH,
+    bitcoin.opcodes.OP_EQUALVERIFY, bitcoin.opcodes.OP_CHECKSIG,
   ]);
-  const refundWrapped = Buffer.from(
-    encodeWrappedSpkHex(refundSpk.toString("hex"), payloadHex),
-    "hex"
+  const refundWrappedHex = appendAssetWrapper(
+    refundSpk.toString("hex"),
+    encodeAssetPayloadHex("TREST", 10000000000n)
   );
-  unsignedTx.addOutput(refundWrapped, 1000);
+  const prevTxid = Buffer.from("44".repeat(32), "hex");
+  const tx = buildSpendTx(prevTxid, Buffer.from(refundWrappedHex, "hex"));
 
-  const sellerLabel = "pq-covenant-seller";
   return {
     network: "xna-test",
-    rawUnsignedTx: unsignedTx.toHex(),
-    covenantWrappedSpkHex: wrappedSpkHex,
-    covenantPrefixHex: covenantHex,
-    paymentAddress,
+    rawUnsignedTx: tx.toHex(),
+    covenantHex,
+    covenantBytes,
+    wrappedSpkHex: wrap.wrappedSpkHex,
     selector,
     seed,
     publicKey,
     serializedPublicKey,
     pubKeyCommitment,
     utxo: {
-      address: sellerLabel,
+      address: "pq-covenant-seller",
       assetName: "TREST",
       txid: prevTxid.reverse().toString("hex"),
       outputIndex: 0,
-      script: wrappedSpkHex,
-      satoshis: 10000000000,
-      value: 10000000000,
-      bareScriptHint: { kind: "covenant-cancel-pq", txHashSelector: selector },
+      script: wrap.wrappedSpkHex,
+      satoshis: 0,
+      value: 0,
+      bareScriptHint: { kind: "covenant-cancel-pq", covenantScriptHex: covenantHex },
     },
-    privateKeys: { [sellerLabel]: { seedKey: seed.toString("hex") } },
+    privateKeys: { "pq-covenant-seller": { seedKey: seed.toString("hex") } },
   };
 }
 
-test("Covenant cancel PQ — happy path (selector 0xff)", () => {
-  const fx = buildCancelPQFixture({});
+test("Covenant cancel PQ — happy path with selector 0xff", () => {
+  const fx = buildPQCancelFixture({ selector: 0xff });
 
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
   const signedTx = bitcoin.Transaction.fromHex(signedHex);
 
-  // scriptSig must decode to [sigPQ+hashtype, pubkey (1313 B), OP_1]
-  expect(signedTx.ins).toHaveLength(1);
-  expect(signedTx.ins[0].witness).toHaveLength(0);
-  const chunks = bitcoin.script.decompile(signedTx.ins[0].script);
-  expect(chunks).not.toBeNull();
-  expect(chunks).toHaveLength(3);
-  const [sigChunk, pubChunk, opOne] = chunks;
-  expect(Buffer.isBuffer(sigChunk)).toBe(true);
-  expect(Buffer.isBuffer(pubChunk)).toBe(true);
-  // 2420-byte ML-DSA-44 signature + 1 byte HASH_TYPE appended = 2421.
-  // (The plan's "2421 bytes" figure refers to the full on-stack element.)
-  expect(sigChunk.length).toBe(2420 + 1);
-  expect(sigChunk[sigChunk.length - 1]).toBe(bitcoin.Transaction.SIGHASH_ALL);
-  // Versioned pubkey = 1 byte prefix + 1312 bytes ML-DSA-44 key
-  expect(pubChunk.length).toBe(1313);
-  expect(pubChunk.equals(fx.serializedPublicKey)).toBe(true);
-  expect(opOne).toBe(bitcoin.opcodes.OP_1);
+  expect(signedTx.ins[0].script.length).toBe(0);
+  const witness = signedTx.ins[0].witness;
+  expect(witness).toHaveLength(5);
+  expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
+  expect(witness[1].length).toBe(2420 + 1);                             // ML-DSA-44 sig + HASH_TYPE
+  expect(witness[1][witness[1].length - 1]).toBe(bitcoin.Transaction.SIGHASH_ALL);
+  expect(witness[2].length).toBe(1313);                                 // serialized PQ pubkey
+  expect(witness[2].equals(fx.serializedPublicKey)).toBe(true);
+  expect(witness[3].equals(Buffer.from([0x01]))).toBe(true);
+  expect(witness[4].equals(fx.covenantBytes)).toBe(true);
 
-  // Verify the signature cryptographically: CSFS re-hashes the stack msg,
-  // so the effective verification input is SHA256(opTxHash). We sign that.
-  // computeOpTxHash is library-internal but re-exported from shared — use
-  // the same algorithm via the published bundle.
-  const TxHash = require("./dist/index.cjs");
-  // Internal helper not exported; re-derive the expected message here.
-  const opTxHash = require("./dist/index.cjs"); // placeholder to keep lint happy — real assertion below.
-  void TxHash;
-  void opTxHash;
-
-  // Reconstruct opTxHash using a local mirror: the test exercises the
-  // full flow end-to-end but asserts behavioural invariants; the per-bit
-  // byte-exact check lives in its own test below.
-  const sigOnly = sigChunk.slice(0, sigChunk.length - 1);
-  // ml-dsa-44 verify takes the message WE SIGNED (SHA256(opTxHash)).
-  // Derive it here via the same code path the lib uses.
-  const verifyFn = ml_dsa44.verify.bind(ml_dsa44);
-  // Compute opTxHash(selector 0xff) for this tx + inIndex 0 using the
-  // same algorithm (inlined to keep this test independent of internals).
+  // Crypto check: the sig (minus hashtype byte) must verify against
+  // SHA256(computeOpTxHash(tx, selector, 0)).
+  const sigOnly = witness[1].slice(0, -1);
   const expectedOpTxHash = computeOpTxHashForTest(signedTx, fx.selector, 0);
   const expectedMsg = Buffer.from(sha256Sync(new Uint8Array(expectedOpTxHash)));
   expect(
-    verifyFn(new Uint8Array(sigOnly), new Uint8Array(expectedMsg), new Uint8Array(fx.publicKey))
+    ml_dsa44.verify(new Uint8Array(sigOnly), new Uint8Array(expectedMsg), new Uint8Array(fx.publicKey))
   ).toBe(true);
 });
 
-test("Covenant cancel PQ — rejects bare (non-wrapped) prevout", () => {
-  const fx = buildCancelPQFixture({});
-  const bareUtxo = { ...fx.utxo, script: fx.covenantPrefixHex };
-  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [bareUtxo], fx.privateKeys)).toThrow(
-    /requires an asset-wrapped prevout/
+test("Covenant cancel PQ — happy path with selector 0x7f (no CURRENT_INDEX bit)", () => {
+  const fx = buildPQCancelFixture({ selector: 0x7f });
+  const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const sigOnly = signedTx.ins[0].witness[1].slice(0, -1);
+  const expectedMsg = Buffer.from(
+    sha256Sync(new Uint8Array(computeOpTxHashForTest(signedTx, 0x7f, 0)))
   );
+  expect(
+    ml_dsa44.verify(new Uint8Array(sigOnly), new Uint8Array(expectedMsg), new Uint8Array(fx.publicKey))
+  ).toBe(true);
 });
 
-test("Covenant cancel PQ — rejects wrapper whose prefix is not a PQ covenant", () => {
-  const fx = buildCancelPQFixture({});
-  const malformedHex =
-    "63" + // OP_IF
-    "76a9" + // junk
-    "68"; // OP_ENDIF
-  const wrappedBad = encodeWrappedSpkHex(
-    malformedHex,
-    encodeAssetPayloadHex("TREST", 10000000000n)
-  );
-  const badUtxo = { ...fx.utxo, script: wrappedBad };
-  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [badUtxo], fx.privateKeys)).toThrow(
-    /not a recognized PQ partial-fill covenant/
-  );
-});
-
-test("Covenant cancel PQ — rejects selector mismatch between hint and covenant", () => {
-  // Covenant built with selector 0xff, hint says 0x01 → reject.
-  const fx = buildCancelPQFixture({ selector: 0xff });
-  const mismatchUtxo = {
+test("Covenant cancel PQ — rejects tampered covenantScriptHex (commitment mismatch)", () => {
+  const fx = buildPQCancelFixture({});
+  const tampered = fx.covenantHex.slice(0, -2) + ((parseInt(fx.covenantHex.slice(-2), 16) ^ 0x55)
+    .toString(16).padStart(2, "0"));
+  const badUtxo = {
     ...fx.utxo,
-    bareScriptHint: { kind: "covenant-cancel-pq", txHashSelector: 0x01 },
+    bareScriptHint: { kind: "covenant-cancel-pq", covenantScriptHex: tampered },
   };
-  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [mismatchUtxo], fx.privateKeys)).toThrow(
-    /selector mismatch/
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [badUtxo], fx.privateKeys)).toThrow(
+    /commitment mismatch/
   );
 });
 
-test("Covenant cancel PQ — rejects commitment mismatch (wrong seedKey)", () => {
-  const fx = buildCancelPQFixture({
-    seedHex: "07".repeat(32),
-  });
-  // Sign with a DIFFERENT seed — pubkey commitment won't match the covenant.
+test("Covenant cancel PQ — rejects wrong seedKey (pubkey commitment mismatch)", () => {
+  const fx = buildPQCancelFixture({ seedHex: "07".repeat(32) });
   const wrongSeed = "08".repeat(32);
-  const keys = { [fx.utxo.address]: { seedKey: wrongSeed } };
+  const keys = { "pq-covenant-seller": { seedKey: wrongSeed } };
   expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], keys)).toThrow(
     /commitment mismatch/
   );

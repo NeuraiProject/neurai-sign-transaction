@@ -20978,9 +20978,6 @@ function bytesEqual(a, b) {
  */
 // ---------- Push values ----------
 const OP_0 = 0x00;
-const OP_PUSHDATA1 = 0x4c;
-const OP_PUSHDATA2 = 0x4d;
-const OP_PUSHDATA4 = 0x4e;
 const OP_1 = 0x51;
 const OP_2 = 0x52;
 const OP_3 = 0x53;
@@ -21008,7 +21005,6 @@ const OP_OUTPUTSCRIPT = 0xcd;
 // ---------- Asset introspection (DePIN-Test) ----------
 const OP_OUTPUTASSETFIELD = 0xce;
 const OP_INPUTASSETFIELD = 0xcf;
-const OP_XNA_ASSET = 0xc0;
 
 // base-x encoding / decoding
 // Copyright (c) 2018 base-x contributors
@@ -21343,178 +21339,7 @@ requireDist();
  * Bare (non-wrapped) scriptPubKeys round-trip through this helper by
  * returning `prefixHex === input` and `assetTransfer === null`.
  */
-const RVN_MAGIC = Uint8Array.from([0x72, 0x76, 0x6e]); // "rvn"
-const TRANSFER_TYPE = 0x74;
-/**
- * Walk the script one opcode at a time, skipping pushdata payload bytes,
- * until either OP_XNA_ASSET is reached at top level or the end of the
- * script. Returns the byte offset of OP_XNA_ASSET, or -1 if not found.
- * Throws on truncated pushdata.
- */
-function findTopLevelAssetOpcode(bytes) {
-    let i = 0;
-    while (i < bytes.length) {
-        const op = bytes[i];
-        if (op === OP_XNA_ASSET)
-            return i;
-        // Short direct push: 0x01..0x4b
-        if (op >= 0x01 && op <= 0x4b) {
-            const len = op;
-            const next = i + 1 + len;
-            if (next > bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: short push of ${len} bytes at offset ${i} exceeds script length`);
-            }
-            i = next;
-            continue;
-        }
-        if (op === OP_PUSHDATA1) {
-            if (i + 1 >= bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA1 length at offset ${i}`);
-            }
-            const len = bytes[i + 1];
-            const next = i + 2 + len;
-            if (next > bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA1 of ${len} bytes at offset ${i} exceeds script length`);
-            }
-            i = next;
-            continue;
-        }
-        if (op === OP_PUSHDATA2) {
-            if (i + 2 >= bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA2 length at offset ${i}`);
-            }
-            const len = bytes[i + 1] | (bytes[i + 2] << 8);
-            const next = i + 3 + len;
-            if (next > bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA2 of ${len} bytes at offset ${i} exceeds script length`);
-            }
-            i = next;
-            continue;
-        }
-        if (op === OP_PUSHDATA4) {
-            if (i + 4 >= bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA4 length at offset ${i}`);
-            }
-            const len = (bytes[i + 1] |
-                (bytes[i + 2] << 8) |
-                (bytes[i + 3] << 16) |
-                (bytes[i + 4] << 24)) >>>
-                0;
-            const next = i + 5 + len;
-            if (next > bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA4 of ${len} bytes at offset ${i} exceeds script length`);
-            }
-            i = next;
-            continue;
-        }
-        // Any other opcode (including OP_1..OP_16, OP_DUP, OP_HASH160, etc.) is
-        // one byte wide in Neurai Script. Advance.
-        i += 1;
-    }
-    return -1;
-}
-/**
- * Read the pushdata element that sits immediately after OP_XNA_ASSET and
- * return its payload bytes together with the cursor position after the
- * element. Only direct pushes (1..75) and PUSHDATA1 are accepted — a
- * well-formed asset transfer payload fits within 75 bytes for the common
- * case and comfortably within 255 bytes even with long names and tails.
- * PUSHDATA2 and PUSHDATA4 would signal a malformed or adversarial wrapper.
- */
-function readPayloadPush(bytes, start) {
-    if (start >= bytes.length) {
-        throw new Error('splitAssetWrappedScriptPubKey: truncated wrapper — missing payload push');
-    }
-    const op = bytes[start];
-    if (op >= 0x01 && op <= 0x4b) {
-        const len = op;
-        const dataStart = start + 1;
-        const dataEnd = dataStart + len;
-        if (dataEnd > bytes.length) {
-            throw new Error(`splitAssetWrappedScriptPubKey: asset payload short push of ${len} bytes exceeds script length`);
-        }
-        return { payload: bytes.slice(dataStart, dataEnd), after: dataEnd };
-    }
-    if (op === OP_PUSHDATA1) {
-        if (start + 1 >= bytes.length) {
-            throw new Error('splitAssetWrappedScriptPubKey: truncated PUSHDATA1 in asset payload');
-        }
-        const len = bytes[start + 1];
-        const dataStart = start + 2;
-        const dataEnd = dataStart + len;
-        if (dataEnd > bytes.length) {
-            throw new Error(`splitAssetWrappedScriptPubKey: asset payload PUSHDATA1 of ${len} bytes exceeds script length`);
-        }
-        return { payload: bytes.slice(dataStart, dataEnd), after: dataEnd };
-    }
-    throw new Error(`splitAssetWrappedScriptPubKey: asset payload push opcode 0x${op.toString(16)} not accepted (expected 0x01..0x4b or PUSHDATA1)`);
-}
-function parseAssetTransferPayload(payload) {
-    if (payload.length < 4 + 1 + 8) {
-        // 4 magic+type, 1 varstr length, 8 int64LE amount
-        throw new Error(`splitAssetWrappedScriptPubKey: asset payload of ${payload.length} bytes is too short`);
-    }
-    for (let i = 0; i < 3; i += 1) {
-        if (payload[i] !== RVN_MAGIC[i]) {
-            throw new Error(`splitAssetWrappedScriptPubKey: asset payload magic mismatch — expected "rvn" got 0x${payload[0].toString(16)} 0x${payload[1].toString(16)} 0x${payload[2].toString(16)}`);
-        }
-    }
-    if (payload[3] !== TRANSFER_TYPE) {
-        throw new Error(`splitAssetWrappedScriptPubKey: asset payload type marker 0x${payload[3].toString(16)} is not a transfer (0x74)`);
-    }
-    const nameLen = payload[4];
-    const nameStart = 5;
-    const nameEnd = nameStart + nameLen;
-    if (nameEnd + 8 > payload.length) {
-        throw new Error(`splitAssetWrappedScriptPubKey: asset payload truncated — name length ${nameLen} does not leave room for amount`);
-    }
-    let assetName = '';
-    for (let i = nameStart; i < nameEnd; i += 1) {
-        assetName += String.fromCharCode(payload[i]);
-    }
-    let amountRaw = 0n;
-    for (let i = 0; i < 8; i += 1) {
-        amountRaw |= BigInt(payload[nameEnd + i]) << BigInt(8 * i);
-    }
-    // Any bytes after nameEnd + 8 form the optional tail (message +
-    // expireTime). We intentionally ignore them in this first version; the
-    // raw payload remains available via `payloadHex` if a consumer later
-    // needs to inspect them.
-    return { assetName, amountRaw };
-}
-/**
- * Parse an asset-transfer-wrapped scriptPubKey. Accepts both wrapped and
- * bare forms. Throws on structural malformation (truncated pushdata,
- * missing OP_DROP after payload, bad magic, unsupported pushdata width).
- */
-function splitAssetWrappedScriptPubKey(spkHex) {
-    const normalized = ensureHex(spkHex, 'scriptPubKey');
-    const bytes = hexToBytes(normalized);
-    const assetOpAt = findTopLevelAssetOpcode(bytes);
-    if (assetOpAt < 0) {
-        return { prefixHex: normalized, assetTransfer: null };
-    }
-    const prefix = bytes.slice(0, assetOpAt);
-    const { payload, after } = readPayloadPush(bytes, assetOpAt + 1);
-    if (after >= bytes.length) {
-        throw new Error('splitAssetWrappedScriptPubKey: asset wrapper missing trailing OP_DROP');
-    }
-    if (bytes[after] !== OP_DROP) {
-        throw new Error(`splitAssetWrappedScriptPubKey: expected OP_DROP at offset ${after}, got 0x${bytes[after].toString(16)}`);
-    }
-    if (after + 1 !== bytes.length) {
-        throw new Error(`splitAssetWrappedScriptPubKey: ${bytes.length - after - 1} trailing bytes after OP_DROP`);
-    }
-    const { assetName, amountRaw } = parseAssetTransferPayload(payload);
-    return {
-        prefixHex: bytesToHex(prefix),
-        assetTransfer: {
-            assetName,
-            amountRaw,
-            payloadHex: bytesToHex(payload),
-        },
-    };
-}
+Uint8Array.from([0x72, 0x76, 0x6e]); // "rvn"
 
 /**
  * Shared parsing primitives for strict covenant parsers. Each covenant
@@ -21634,6 +21459,33 @@ function readPushPositiveInt(c, label) {
     const data = readPush(c, label);
     return decodeScriptNum(data, label);
 }
+/**
+ * Read a 1-byte selector as an UNSIGNED 8-bit integer (0..255). Accepts
+ * two on-wire encodings, because old vs new covenant builders differ:
+ *   - `OP_1..OP_16` shorthand (single opcode) → values 1..16.
+ *   - `0x01 <byte>` raw 1-byte push → any value 1..255.
+ *
+ * Values 0x80..0xff MUST use the raw-push form; the CScriptNum encoding
+ * would need a 0x00 padding byte and become 2 bytes on-stack, which
+ * consensus `OP_TXHASH` rejects. The builder in `script-pq.ts` emits the
+ * raw-push form unconditionally; the parser stays lenient so covenants
+ * built by older tools (using OP_N for small values) still round-trip.
+ */
+function readPushUint8(c, label) {
+    if (c.pos >= c.bytes.length) {
+        throw new Error(`parse: end of script at ${label}`);
+    }
+    const opcode = c.bytes[c.pos];
+    if (opcode >= OP_1 && opcode <= 0x60) {
+        c.pos += 1;
+        return opcode - OP_1 + 1;
+    }
+    const data = readPush(c, label);
+    if (data.length !== 1) {
+        throw new Error(`parse: ${label} must be a single-byte push, got ${data.length} bytes`);
+    }
+    return data[0];
+}
 
 /**
  * Parser for the Partial-Fill Sell Order covenant.
@@ -21751,11 +21603,13 @@ function parsePartialFillScriptPQ(script, network = 'xna-test') {
         throw new Error(`parse-pq: pubKeyCommitment must be 32 bytes, got ${pubKeyCommitment.length}`);
     }
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (cancel)');
-    const txHashSelectorBig = readPushPositiveInt(c, 'txHashSelector');
-    if (txHashSelectorBig < 1n || txHashSelectorBig > 0xffn) {
-        throw new Error(`parse-pq: txHashSelector out of range (${txHashSelectorBig})`);
+    // Selector is read as an unsigned byte — consensus OP_TXHASH treats the
+    // on-stack element as uint8, and the builder emits a raw 1-byte push so
+    // selectors 0x80..0xff round-trip correctly (plan v3 bug B).
+    const txHashSelector = readPushUint8(c, 'txHashSelector');
+    if (txHashSelector < 1) {
+        throw new Error(`parse-pq: txHashSelector 0x00 is rejected by OP_TXHASH`);
     }
-    const txHashSelector = Number(txHashSelectorBig);
     expectByte(c, OP_TXHASH, 'OP_TXHASH');
     expectByte(c, OP_SWAP, 'OP_SWAP');
     expectByte(c, OP_CHECKSIGFROMSTACK, 'OP_CHECKSIGFROMSTACK');
@@ -22467,22 +22321,36 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
             isLegacy: inputIsLegacy,
             isPQ: inputIsPQ,
         });
-        if (!inputIsLegacy && !inputIsPQ) {
-            const hint = utxo.bareScriptHint;
-            if (hint?.kind === "covenant-cancel-legacy") {
-                const split = splitAssetWrappedScriptPubKey(utxo.script);
-                if (!split.assetTransfer) {
-                    throw new Error(`covenant-cancel-legacy hint for ${txid}:${vout} requires an asset-wrapped prevout`);
-                }
+        const hint = utxo.bareScriptHint;
+        // Covenant cancel branches: the prevout is AuthScript-v1-wrapped
+        // (commitment-to-covenant), so `inputIsPQ` is true. The hint tells
+        // the library the covenant witness script to use and the flavour
+        // (legacy ECDSA or PQ CSFS) of the cancel signature.
+        if (inputIsPQ && (hint?.kind === "covenant-cancel-legacy" || hint?.kind === "covenant-cancel-pq")) {
+            // Common verification: AuthScript-NOAUTH commitment must match the
+            // 32-byte program in the prevout. `scriptPubKey` may be either bare
+            // AuthScript v1 (34 bytes) or AuthScript v1 + asset wrapper — both
+            // share the same 34-byte prefix we care about.
+            if (scriptPubKey.length < AUTHSCRIPT_PREFIX_LENGTH) {
+                throw new Error(`${hint.kind} hint for ${txid}:${vout}: prevout is shorter than the 34-byte AuthScript v1 prefix`);
+            }
+            const covenantScriptBytes = bufferFromHex(hint.covenantScriptHex, `${hint.kind} covenantScriptHex`);
+            const expectedCommitment = getAuthScriptCommitment(NOAUTH_TYPE, null, covenantScriptBytes);
+            const actualCommitment = scriptPubKey.subarray(2, AUTHSCRIPT_PREFIX_LENGTH);
+            if (!expectedCommitment.equals(actualCommitment)) {
+                throw new Error(`${hint.kind} commitment mismatch for ${txid}:${vout}: hint.covenantScriptHex does not hash to the UTXO's AuthScript commitment`);
+            }
+            if (!hasPrivateKeyForAddress(utxo.address)) {
+                throw new Error(`Missing private key for covenant cancel at ${txid}:${vout} (address ${utxo.address})`);
+            }
+            const amount = getUTXOAmount(utxo);
+            if (hint.kind === "covenant-cancel-legacy") {
                 let parsed;
                 try {
-                    parsed = parsePartialFillScript(split.prefixHex);
+                    parsed = parsePartialFillScript(hint.covenantScriptHex);
                 }
                 catch (err) {
-                    throw new Error(`covenant-cancel-legacy hint for ${txid}:${vout} but prefix is not a recognized partial-fill covenant: ${err.message}`);
-                }
-                if (!hasPrivateKeyForAddress(utxo.address)) {
-                    throw new Error(`Missing private key for covenant cancel at ${txid}:${vout} (seller address ${utxo.address})`);
+                    throw new Error(`covenant-cancel-legacy covenantScriptHex is not a legacy partial-fill covenant: ${err.message}`);
                 }
                 const keyPair = getKeyPairByAddress(utxo.address);
                 const derivedPKH = hash160(bufferExports.Buffer.from(keyPair.publicKey));
@@ -22490,78 +22358,77 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
                 if (!derivedPKH.equals(covenantPKH)) {
                     throw new Error(`covenant cancel key for ${txid}:${vout} does not match the covenant sellerPubKeyHash (got ${derivedPKH.toString("hex")}, expected ${covenantPKH.toString("hex")})`);
                 }
-                const sighash = tx.hashForSignature(i, scriptPubKey, HASH_TYPE);
+                // AuthScript-NOAUTH sighash: scriptCode = the covenant (witness
+                // script), authType = 0x00. Amount is the UTXO's XNA value —
+                // typically 0 for asset covenant outputs.
+                const sighash = hashForAuthScript(tx, i, covenantScriptBytes, amount, HASH_TYPE, NOAUTH_TYPE);
                 const rawSignature = keyPair.sign(sighash);
                 const signatureWithHashType = srcExports.script.signature.encode(bufferExports.Buffer.from(rawSignature), HASH_TYPE);
-                const scriptSig = srcExports.script.compile([
+                const witnessStack = [
+                    bufferExports.Buffer.from([NOAUTH_TYPE]),
                     signatureWithHashType,
                     bufferExports.Buffer.from(keyPair.publicKey),
-                    srcExports.opcodes.OP_1,
-                ]);
-                tx.setInputScript(i, scriptSig);
+                    bufferExports.Buffer.from([0x01]), // selects OP_IF cancel branch
+                    covenantScriptBytes,
+                ];
+                tx.setInputScript(i, bufferExports.Buffer.alloc(0));
+                tx.setWitness(i, witnessStack);
                 debug({
                     step: "covenant-cancel-legacy-signed",
                     i,
-                    prefixLen: split.prefixHex.length / 2,
                     tokenId: parsed.tokenId,
                     unitPriceSats: parsed.unitPriceSats.toString(),
-                    assetName: split.assetTransfer.assetName,
-                    amountRaw: split.assetTransfer.amountRaw.toString(),
                 });
                 continue;
             }
-            if (hint?.kind === "covenant-cancel-pq") {
-                const split = splitAssetWrappedScriptPubKey(utxo.script);
-                if (!split.assetTransfer) {
-                    throw new Error(`covenant-cancel-pq hint for ${txid}:${vout} requires an asset-wrapped prevout`);
-                }
-                let parsedPQ;
-                try {
-                    parsedPQ = parsePartialFillScriptPQ(split.prefixHex);
-                }
-                catch (err) {
-                    throw new Error(`covenant-cancel-pq hint for ${txid}:${vout} but prefix is not a recognized PQ partial-fill covenant: ${err.message}`);
-                }
-                if (hint.txHashSelector !== parsedPQ.txHashSelector) {
-                    throw new Error(`covenant-cancel-pq selector mismatch for ${txid}:${vout}: hint=0x${hint.txHashSelector.toString(16)}, covenant=0x${parsedPQ.txHashSelector.toString(16)}`);
-                }
-                if (!hasPrivateKeyForAddress(utxo.address)) {
-                    throw new Error(`Missing PQ private key for covenant cancel at ${txid}:${vout} (seller address ${utxo.address})`);
-                }
-                const pqMaterial = getPQMaterialByAddress(utxo.address);
-                const derivedCommitment = sha256(pqMaterial.serializedPublicKey);
-                const covenantCommitment = bufferExports.Buffer.from(parsedPQ.pubKeyCommitment);
-                if (!derivedCommitment.equals(covenantCommitment)) {
-                    throw new Error(`PQ covenant cancel key commitment mismatch for ${txid}:${vout} (got ${derivedCommitment.toString("hex")}, expected ${covenantCommitment.toString("hex")})`);
-                }
-                // §3.5: message to sign is SHA256(OP_TXHASH(selector)). CSFS
-                // internally re-hashes the stack element before verifying, so the
-                // signature input is SHA256(opTxHash) — not opTxHash directly.
-                const opTxHash = computeOpTxHash(tx, parsedPQ.txHashSelector, i);
-                const message = sha256(opTxHash);
-                const rawSig = ml_dsa44.sign(new Uint8Array(message), new Uint8Array(pqMaterial.secretKey), { extraEntropy: false });
-                const sigWithHashType = bufferExports.Buffer.concat([
-                    bufferExports.Buffer.from(rawSig),
-                    bufferExports.Buffer.from([HASH_TYPE]),
-                ]);
-                const scriptSig = srcExports.script.compile([
-                    sigWithHashType,
-                    pqMaterial.serializedPublicKey,
-                    srcExports.opcodes.OP_1,
-                ]);
-                tx.setInputScript(i, scriptSig);
-                debug({
-                    step: "covenant-cancel-pq-signed",
-                    i,
-                    selector: parsedPQ.txHashSelector,
-                    opTxHashHex: opTxHash.toString("hex"),
-                    messageHex: message.toString("hex"),
-                    tokenId: parsedPQ.tokenId,
-                    unitPriceSats: parsedPQ.unitPriceSats.toString(),
-                    assetName: split.assetTransfer.assetName,
-                    amountRaw: split.assetTransfer.amountRaw.toString(),
-                });
-                continue;
+            // hint.kind === "covenant-cancel-pq"
+            let parsedPQ;
+            try {
+                parsedPQ = parsePartialFillScriptPQ(hint.covenantScriptHex);
+            }
+            catch (err) {
+                throw new Error(`covenant-cancel-pq covenantScriptHex is not a PQ partial-fill covenant: ${err.message}`);
+            }
+            const pqMaterial = getPQMaterialByAddress(utxo.address);
+            const derivedPqCommitment = sha256(pqMaterial.serializedPublicKey);
+            const covenantPqCommitment = bufferExports.Buffer.from(parsedPQ.pubKeyCommitment);
+            if (!derivedPqCommitment.equals(covenantPqCommitment)) {
+                throw new Error(`PQ covenant cancel key commitment mismatch for ${txid}:${vout}: ` +
+                    `wallet pubkey hashes to ${derivedPqCommitment.toString("hex")}, ` +
+                    `covenant commits to ${covenantPqCommitment.toString("hex")}`);
+            }
+            // Consensus: OP_TXHASH pushes the 32-byte digest, CSFS then
+            // re-hashes the message stack item (SIGVERSION_AUTHSCRIPT-ish),
+            // so we sign SHA256(opTxHash). See plan v3 §3.
+            const opTxHash = computeOpTxHash(tx, parsedPQ.txHashSelector, i);
+            const message = sha256(opTxHash);
+            const rawSig = ml_dsa44.sign(new Uint8Array(message), new Uint8Array(pqMaterial.secretKey), { extraEntropy: false });
+            const sigWithHashType = bufferExports.Buffer.concat([
+                bufferExports.Buffer.from(rawSig),
+                bufferExports.Buffer.from([HASH_TYPE]),
+            ]);
+            const witnessStack = [
+                bufferExports.Buffer.from([NOAUTH_TYPE]),
+                sigWithHashType,
+                pqMaterial.serializedPublicKey,
+                bufferExports.Buffer.from([0x01]),
+                covenantScriptBytes,
+            ];
+            tx.setInputScript(i, bufferExports.Buffer.alloc(0));
+            tx.setWitness(i, witnessStack);
+            debug({
+                step: "covenant-cancel-pq-signed",
+                i,
+                selector: parsedPQ.txHashSelector,
+                opTxHashHex: opTxHash.toString("hex"),
+                tokenId: parsedPQ.tokenId,
+                unitPriceSats: parsedPQ.unitPriceSats.toString(),
+            });
+            continue;
+        }
+        if (!inputIsLegacy && !inputIsPQ) {
+            if (hint) {
+                throw new Error(`${hint.kind} hint requires an AuthScript-v1-wrapped prevout for ${txid}:${vout}, but the prevout script is neither P2PKH nor AuthScript v1`);
             }
             throw new Error(`Unsupported prevout script for ${txid}:${vout}. Only legacy P2PKH and Neurai AuthScript witness v1 are supported`);
         }

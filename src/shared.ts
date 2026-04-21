@@ -97,14 +97,18 @@ type PQChainNetwork = {
 };
 
 /**
- * Hint that unlocks signing of a bare-script prevout that is not a
- * recognised legacy P2PKH nor a Neurai AuthScript witness v1. The library
- * only honours hints for the two partial-fill covenant cancel branches —
- * every other shape is still rejected.
+ * Hint that unlocks signing of a partial-fill covenant cancel. Covenant
+ * UTXOs on-chain are always AuthScript-v1 witness wrapped (consensus
+ * `IsAssetScript` only accepts 25-byte P2PKH or 34-byte AuthScript-v1
+ * prefixes before an OP_XNA_ASSET wrapper), so the covenant itself lives
+ * in the spend WITNESS, not in the scriptPubKey. Callers must supply the
+ * covenant bytes in `covenantScriptHex`; the library verifies that
+ * `taggedHash("NeuraiAuthScript", 0x01 || 0x00 || SHA256(covenantScript))`
+ * matches the 32-byte program in the prevout before signing.
  */
 export type BareScriptSigningHint =
-  | { kind: "covenant-cancel-legacy" }
-  | { kind: "covenant-cancel-pq"; txHashSelector: number };
+  | { kind: "covenant-cancel-legacy"; covenantScriptHex: string }
+  | { kind: "covenant-cancel-pq"; covenantScriptHex: string };
 
 export interface IUTXO {
   address: string;
@@ -660,31 +664,48 @@ export function sign(
       isPQ: inputIsPQ,
     });
 
-    if (!inputIsLegacy && !inputIsPQ) {
-      const hint = utxo.bareScriptHint;
-      if (hint?.kind === "covenant-cancel-legacy") {
-        const split = splitAssetWrappedScriptPubKey(utxo.script);
-        if (!split.assetTransfer) {
-          throw new Error(
-            `covenant-cancel-legacy hint for ${txid}:${vout} requires an asset-wrapped prevout`
-          );
-        }
+    const hint = utxo.bareScriptHint;
 
+    // Covenant cancel branches: the prevout is AuthScript-v1-wrapped
+    // (commitment-to-covenant), so `inputIsPQ` is true. The hint tells
+    // the library the covenant witness script to use and the flavour
+    // (legacy ECDSA or PQ CSFS) of the cancel signature.
+    if (inputIsPQ && (hint?.kind === "covenant-cancel-legacy" || hint?.kind === "covenant-cancel-pq")) {
+      // Common verification: AuthScript-NOAUTH commitment must match the
+      // 32-byte program in the prevout. `scriptPubKey` may be either bare
+      // AuthScript v1 (34 bytes) or AuthScript v1 + asset wrapper — both
+      // share the same 34-byte prefix we care about.
+      if (scriptPubKey.length < AUTHSCRIPT_PREFIX_LENGTH) {
+        throw new Error(
+          `${hint.kind} hint for ${txid}:${vout}: prevout is shorter than the 34-byte AuthScript v1 prefix`
+        );
+      }
+      const covenantScriptBytes = bufferFromHex(hint.covenantScriptHex, `${hint.kind} covenantScriptHex`);
+      const expectedCommitment = getAuthScriptCommitment(NOAUTH_TYPE, null, covenantScriptBytes);
+      const actualCommitment = scriptPubKey.subarray(2, AUTHSCRIPT_PREFIX_LENGTH);
+      if (!expectedCommitment.equals(actualCommitment)) {
+        throw new Error(
+          `${hint.kind} commitment mismatch for ${txid}:${vout}: hint.covenantScriptHex does not hash to the UTXO's AuthScript commitment`
+        );
+      }
+
+      if (!hasPrivateKeyForAddress(utxo.address)) {
+        throw new Error(
+          `Missing private key for covenant cancel at ${txid}:${vout} (address ${utxo.address})`
+        );
+      }
+
+      const amount = getUTXOAmount(utxo);
+
+      if (hint.kind === "covenant-cancel-legacy") {
         let parsed;
         try {
-          parsed = parsePartialFillScript(split.prefixHex);
+          parsed = parsePartialFillScript(hint.covenantScriptHex);
         } catch (err) {
           throw new Error(
-            `covenant-cancel-legacy hint for ${txid}:${vout} but prefix is not a recognized partial-fill covenant: ${(err as Error).message}`
+            `covenant-cancel-legacy covenantScriptHex is not a legacy partial-fill covenant: ${(err as Error).message}`
           );
         }
-
-        if (!hasPrivateKeyForAddress(utxo.address)) {
-          throw new Error(
-            `Missing private key for covenant cancel at ${txid}:${vout} (seller address ${utxo.address})`
-          );
-        }
-
         const keyPair = getKeyPairByAddress(utxo.address);
         const derivedPKH = hash160(Buffer.from(keyPair.publicKey));
         const covenantPKH = Buffer.from(parsed.sellerPubKeyHash);
@@ -693,102 +714,98 @@ export function sign(
             `covenant cancel key for ${txid}:${vout} does not match the covenant sellerPubKeyHash (got ${derivedPKH.toString("hex")}, expected ${covenantPKH.toString("hex")})`
           );
         }
-
-        const sighash = tx.hashForSignature(i, scriptPubKey, HASH_TYPE);
+        // AuthScript-NOAUTH sighash: scriptCode = the covenant (witness
+        // script), authType = 0x00. Amount is the UTXO's XNA value —
+        // typically 0 for asset covenant outputs.
+        const sighash = hashForAuthScript(
+          tx,
+          i,
+          covenantScriptBytes,
+          amount,
+          HASH_TYPE,
+          NOAUTH_TYPE
+        );
         const rawSignature = keyPair.sign(sighash);
         const signatureWithHashType = bitcoin.script.signature.encode(
           Buffer.from(rawSignature),
           HASH_TYPE
         );
-        const scriptSig = bitcoin.script.compile([
+        const witnessStack = [
+          Buffer.from([NOAUTH_TYPE]),
           signatureWithHashType,
           Buffer.from(keyPair.publicKey),
-          bitcoin.opcodes.OP_1,
-        ]);
-        tx.setInputScript(i, scriptSig);
+          Buffer.from([0x01]), // selects OP_IF cancel branch
+          covenantScriptBytes,
+        ];
+        tx.setInputScript(i, Buffer.alloc(0));
+        tx.setWitness(i, witnessStack);
         debug({
           step: "covenant-cancel-legacy-signed",
           i,
-          prefixLen: split.prefixHex.length / 2,
           tokenId: parsed.tokenId,
           unitPriceSats: parsed.unitPriceSats.toString(),
-          assetName: split.assetTransfer.assetName,
-          amountRaw: split.assetTransfer.amountRaw.toString(),
         });
         continue;
       }
-      if (hint?.kind === "covenant-cancel-pq") {
-        const split = splitAssetWrappedScriptPubKey(utxo.script);
-        if (!split.assetTransfer) {
-          throw new Error(
-            `covenant-cancel-pq hint for ${txid}:${vout} requires an asset-wrapped prevout`
-          );
-        }
 
-        let parsedPQ;
-        try {
-          parsedPQ = parsePartialFillScriptPQ(split.prefixHex);
-        } catch (err) {
-          throw new Error(
-            `covenant-cancel-pq hint for ${txid}:${vout} but prefix is not a recognized PQ partial-fill covenant: ${(err as Error).message}`
-          );
-        }
-
-        if (hint.txHashSelector !== parsedPQ.txHashSelector) {
-          throw new Error(
-            `covenant-cancel-pq selector mismatch for ${txid}:${vout}: hint=0x${hint.txHashSelector.toString(16)}, covenant=0x${parsedPQ.txHashSelector.toString(16)}`
-          );
-        }
-
-        if (!hasPrivateKeyForAddress(utxo.address)) {
-          throw new Error(
-            `Missing PQ private key for covenant cancel at ${txid}:${vout} (seller address ${utxo.address})`
-          );
-        }
-
-        const pqMaterial = getPQMaterialByAddress(utxo.address);
-        const derivedCommitment = sha256(pqMaterial.serializedPublicKey);
-        const covenantCommitment = Buffer.from(parsedPQ.pubKeyCommitment);
-        if (!derivedCommitment.equals(covenantCommitment)) {
-          throw new Error(
-            `PQ covenant cancel key commitment mismatch for ${txid}:${vout} (got ${derivedCommitment.toString("hex")}, expected ${covenantCommitment.toString("hex")})`
-          );
-        }
-
-        // §3.5: message to sign is SHA256(OP_TXHASH(selector)). CSFS
-        // internally re-hashes the stack element before verifying, so the
-        // signature input is SHA256(opTxHash) — not opTxHash directly.
-        const opTxHash = computeOpTxHash(tx, parsedPQ.txHashSelector, i);
-        const message = sha256(opTxHash);
-
-        const rawSig = ml_dsa44.sign(
-          new Uint8Array(message),
-          new Uint8Array(pqMaterial.secretKey),
-          { extraEntropy: false }
+      // hint.kind === "covenant-cancel-pq"
+      let parsedPQ;
+      try {
+        parsedPQ = parsePartialFillScriptPQ(hint.covenantScriptHex);
+      } catch (err) {
+        throw new Error(
+          `covenant-cancel-pq covenantScriptHex is not a PQ partial-fill covenant: ${(err as Error).message}`
         );
-        const sigWithHashType = Buffer.concat([
-          Buffer.from(rawSig),
-          Buffer.from([HASH_TYPE]),
-        ]);
+      }
+      const pqMaterial = getPQMaterialByAddress(utxo.address);
+      const derivedPqCommitment = sha256(pqMaterial.serializedPublicKey);
+      const covenantPqCommitment = Buffer.from(parsedPQ.pubKeyCommitment);
+      if (!derivedPqCommitment.equals(covenantPqCommitment)) {
+        throw new Error(
+          `PQ covenant cancel key commitment mismatch for ${txid}:${vout}: ` +
+            `wallet pubkey hashes to ${derivedPqCommitment.toString("hex")}, ` +
+            `covenant commits to ${covenantPqCommitment.toString("hex")}`
+        );
+      }
+      // Consensus: OP_TXHASH pushes the 32-byte digest, CSFS then
+      // re-hashes the message stack item (SIGVERSION_AUTHSCRIPT-ish),
+      // so we sign SHA256(opTxHash). See plan v3 §3.
+      const opTxHash = computeOpTxHash(tx, parsedPQ.txHashSelector, i);
+      const message = sha256(opTxHash);
+      const rawSig = ml_dsa44.sign(
+        new Uint8Array(message),
+        new Uint8Array(pqMaterial.secretKey),
+        { extraEntropy: false }
+      );
+      const sigWithHashType = Buffer.concat([
+        Buffer.from(rawSig),
+        Buffer.from([HASH_TYPE]),
+      ]);
+      const witnessStack = [
+        Buffer.from([NOAUTH_TYPE]),
+        sigWithHashType,
+        pqMaterial.serializedPublicKey,
+        Buffer.from([0x01]),
+        covenantScriptBytes,
+      ];
+      tx.setInputScript(i, Buffer.alloc(0));
+      tx.setWitness(i, witnessStack);
+      debug({
+        step: "covenant-cancel-pq-signed",
+        i,
+        selector: parsedPQ.txHashSelector,
+        opTxHashHex: opTxHash.toString("hex"),
+        tokenId: parsedPQ.tokenId,
+        unitPriceSats: parsedPQ.unitPriceSats.toString(),
+      });
+      continue;
+    }
 
-        const scriptSig = bitcoin.script.compile([
-          sigWithHashType,
-          pqMaterial.serializedPublicKey,
-          bitcoin.opcodes.OP_1,
-        ]);
-        tx.setInputScript(i, scriptSig);
-        debug({
-          step: "covenant-cancel-pq-signed",
-          i,
-          selector: parsedPQ.txHashSelector,
-          opTxHashHex: opTxHash.toString("hex"),
-          messageHex: message.toString("hex"),
-          tokenId: parsedPQ.tokenId,
-          unitPriceSats: parsedPQ.unitPriceSats.toString(),
-          assetName: split.assetTransfer.assetName,
-          amountRaw: split.assetTransfer.amountRaw.toString(),
-        });
-        continue;
+    if (!inputIsLegacy && !inputIsPQ) {
+      if (hint) {
+        throw new Error(
+          `${hint.kind} hint requires an AuthScript-v1-wrapped prevout for ${txid}:${vout}, but the prevout script is neither P2PKH nor AuthScript v1`
+        );
       }
       throw new Error(
         `Unsupported prevout script for ${txid}:${vout}. Only legacy P2PKH and Neurai AuthScript witness v1 are supported`

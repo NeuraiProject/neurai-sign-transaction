@@ -18,16 +18,21 @@ export interface ISignOptions {
     debug?: boolean | ((event: ISignDebugEvent) => void);
 }
 /**
- * Hint that unlocks signing of a bare-script prevout that is not a
- * recognised legacy P2PKH nor a Neurai AuthScript witness v1. The library
- * only honours hints for the two partial-fill covenant cancel branches —
- * every other shape is still rejected.
+ * Hint that unlocks signing of a partial-fill covenant cancel. Covenant
+ * UTXOs on-chain are always AuthScript-v1 witness wrapped (consensus
+ * `IsAssetScript` only accepts 25-byte P2PKH or 34-byte AuthScript-v1
+ * prefixes before an OP_XNA_ASSET wrapper), so the covenant itself lives
+ * in the spend WITNESS, not in the scriptPubKey. Callers must supply the
+ * covenant bytes in `covenantScriptHex`; the library verifies that
+ * `taggedHash("NeuraiAuthScript", 0x01 || 0x00 || SHA256(covenantScript))`
+ * matches the 32-byte program in the prevout before signing.
  */
 export type BareScriptSigningHint = {
     kind: "covenant-cancel-legacy";
+    covenantScriptHex: string;
 } | {
     kind: "covenant-cancel-pq";
-    txHashSelector: number;
+    covenantScriptHex: string;
 };
 export interface IUTXO {
     address: string;
