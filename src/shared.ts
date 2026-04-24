@@ -24,6 +24,11 @@ const AUTHSCRIPT_VERSION = 0x01;
 const NOAUTH_TYPE = 0x00;
 const PQ_AUTHSCRIPT_TYPE = 0x01;
 const LEGACY_AUTHSCRIPT_TYPE = 0x02;
+// Neurai asset wrapper opcode: <destination scriptPubKey> OP_XNA_ASSET <pushdata> OP_DROP.
+// Asset-wrapped outputs always carry nValue = 0 on-chain (the asset quantity
+// lives in the pushdata payload), which is what the node puts into the
+// BIP-143 sighash. See `getSighashAmount` below.
+const OP_XNA_ASSET = 0xc0;
 const PQ_PUBLIC_KEY_LENGTH = 1312;
 const PQ_SECRET_KEY_LENGTH = 2560;
 const PQ_KEYDATA_LENGTH = 3872;
@@ -205,6 +210,53 @@ function getUTXOAmount(utxo: IUTXO): number {
   }
 
   return amount;
+}
+
+/**
+ * Returns the nValue that the consensus layer puts into the BIP-143 sighash
+ * preimage for this UTXO.
+ *
+ * Neurai / Ravencoin asset UTXOs are indexed under `getaddressutxos` with
+ * `satoshis = assetAmount` (legacy Ravencoin convention). The real on-chain
+ * `nValue` for any asset transfer / issue / reissue / owner output is 0,
+ * and that 0 is what the node puts into the sighash. Passing
+ * `utxo.satoshis` directly (the asset quantity) produces a sighash that
+ * diverges from the node and the signature fails consensus verification
+ * with `WITNESS_PROGRAM_MISMATCH`.
+ *
+ * The script itself is the source of truth: if the scriptPubKey has an
+ * `OP_XNA_ASSET` byte right after the destination prefix (P2PKH = 25 bytes,
+ * AuthScript v1 = 34 bytes), the output is asset-wrapped and its nValue
+ * is 0.
+ *
+ * Non-standard prefixes (covenants, bare scripts, unknown witness
+ * versions) fall through to `getUTXOAmount`; callers that supply a
+ * `bareScriptHint` are expected to provide a UTXO whose `satoshis` field
+ * already reflects the real nValue.
+ */
+function getSighashAmount(utxo: IUTXO): number {
+  if (typeof utxo.script !== "string" || utxo.script.length === 0) {
+    return getUTXOAmount(utxo);
+  }
+
+  let scriptPubKey: Buffer;
+  try {
+    scriptPubKey = bufferFromHex(utxo.script, `scriptPubKey for ${utxo.txid}:${utxo.outputIndex}`);
+  } catch {
+    return getUTXOAmount(utxo);
+  }
+
+  const assetOffset = isLegacyScript(scriptPubKey)
+    ? LEGACY_PREFIX_LENGTH
+    : isPQScript(scriptPubKey)
+      ? AUTHSCRIPT_PREFIX_LENGTH
+      : -1;
+
+  if (assetOffset >= 0 && scriptPubKey.length > assetOffset && scriptPubKey[assetOffset] === OP_XNA_ASSET) {
+    return 0;
+  }
+
+  return getUTXOAmount(utxo);
 }
 
 function sha256(buffer: Buffer): Buffer {
@@ -695,7 +747,7 @@ export function sign(
         );
       }
 
-      const amount = getUTXOAmount(utxo);
+      const amount = getSighashAmount(utxo);
 
       if (hint.kind === "covenant-cancel-legacy") {
         let parsed;
@@ -888,7 +940,7 @@ export function sign(
           tx,
           i,
           spendTemplate.witnessScript,
-          getUTXOAmount(utxo),
+          getSighashAmount(utxo),
           HASH_TYPE,
           spendTemplate.authType
         );
@@ -911,7 +963,7 @@ export function sign(
           tx,
           i,
           spendTemplate.witnessScript,
-          getUTXOAmount(utxo),
+          getSighashAmount(utxo),
           HASH_TYPE,
           spendTemplate.authType
         );
