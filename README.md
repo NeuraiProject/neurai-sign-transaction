@@ -184,3 +184,100 @@ Legacy global usage:
   );
 </script>
 ```
+
+## Fee / size estimation
+
+Because PQ AuthScript inputs are roughly six times larger than legacy P2PKH inputs (~977 vbytes vs ~148), transactions built with a generic per-input estimate will frequently fall under the node's `min relay fee`. To make accurate fee estimation possible without re-implementing the witness layout in every wallet/builder, this package exposes a small estimation API alongside `sign`.
+
+The size constants are exported so that anyone composing transactions can compute fees consistently:
+
+```js
+import { VBYTES } from "@neuraiproject/neurai-sign-transaction";
+
+VBYTES.baseTxOverheadBytes; // 10  — version + counts + locktime
+VBYTES.segwitMarkerVbytes;  // 1   — added once when any input is PQ
+VBYTES.legacyInputVbytes;   // 148 — P2PKH spend, worst-case scriptSig
+VBYTES.pqInputVbytes;       // 977 — AuthScript v1 PQ spend with default OP_TRUE script
+VBYTES.legacyOutputBytes;   // 34  — value + script length + 25-byte P2PKH script
+VBYTES.pqOutputBytes;       // 43  — value + script length + 34-byte AuthScript v1 script
+```
+
+### `isPQAddress(address)` / `isPQScript(scriptHex)`
+
+Classifiers for distinguishing PQ destinations from legacy ones. PQ addresses use the `nq` (mainnet) and `tnq` (testnet) bech32 HRPs; PQ scripts start with `OP_1 <32-byte commitment>` (`5120…` in hex), including asset-wrapped variants.
+
+### `estimateInputVbytes(utxo)` / `estimateOutputBytes(target)`
+
+Per-component helpers. `estimateInputVbytes` prefers the UTXO's `script` and falls back to its `address` if the script is not available. `estimateOutputBytes` accepts either an address string or a `{ address }` descriptor.
+
+```js
+import {
+  estimateInputVbytes,
+  estimateOutputBytes,
+} from "@neuraiproject/neurai-sign-transaction";
+
+estimateInputVbytes({ script: "5120…" });        // 977
+estimateInputVbytes({ address: "mgRYHdMq…" });   // 148
+estimateOutputBytes("nq1qabc…");                 // 43
+estimateOutputBytes({ address: "mgRYHdMq…" });   // 34
+```
+
+### `estimateTransactionVbytes(inputs, outputs)`
+
+Quick pre-build estimate when you do not yet have a `rawTx`. Sums input/output contributions plus base overhead and the segwit marker (added once when any input is PQ). Inputs may be partial UTXO-like objects (`script` and/or `address`); outputs may be address strings or `{ address }`.
+
+```js
+import { estimateTransactionVbytes } from "@neuraiproject/neurai-sign-transaction";
+
+const vbytes = estimateTransactionVbytes(
+  [{ script: "5120…" }, { address: "mgRYHdMq…" }],
+  ["nq1qchange…", "mgRYHdMqburn…"],
+);
+const feeXna = (vbytes / 1000) * feeRateXnaPerKb;
+```
+
+Use this in wallets / builders during UTXO selection to budget the right XNA amount before constructing the raw transaction.
+
+### `estimateVirtualSize(network, rawTxHex, utxos)`
+
+Exact post-signing size for an already-built unsigned transaction. Internally fills each input with a worst-case dummy `scriptSig` / witness derived from the matching UTXO's script, then returns `bitcoinjs-lib`'s `tx.virtualSize()`. **No actual signing is performed**, so this is cheap to call (no PQ key material involved).
+
+The `network` parameter is accepted for API symmetry with `sign`; the script type is inferred from each UTXO's `script`. Unknown/missing UTXOs fall back to a worst-case legacy P2PKH spend.
+
+```js
+import { estimateVirtualSize } from "@neuraiproject/neurai-sign-transaction";
+
+const vsize = estimateVirtualSize("xna-pq-test", rawUnsignedHex, UTXOs);
+const feeSats = Math.ceil((vsize / 1000) * feeRateSatsPerKb);
+```
+
+Recommended flow when an exact fee is required (e.g. when ECDSA signature length variability matters):
+
+1. Build the raw transaction with a placeholder fee.
+2. Call `estimateVirtualSize` to get the real vbytes.
+3. Re-build the raw transaction adjusting the change output by the difference.
+4. Call `sign` on the corrected raw transaction.
+
+Because `estimateVirtualSize` always assumes the worst-case signature size (72-byte DER for ECDSA, 2420-byte ml-dsa44 for PQ), the returned vsize is an upper bound on the actual signed size — you will never under-pay the relay fee.
+
+### What `estimateVirtualSize` covers
+
+The estimator classifies each input as legacy or PQ from the UTXO's `script` and assumes the most common spend layout:
+
+- a worst-case P2PKH `scriptSig` (DER signature + compressed pubkey), or
+- a PQ AuthScript witness with the **default** `OP_TRUE` `witnessScript` and **no** `functionalArgs`.
+
+That covers the normal flows: ordinary XNA / asset / asset-creation transactions where every input is either legacy P2PKH or simple PQ AuthScript. For these, the returned vsize is exact within ±2 vbytes.
+
+### Limitations
+
+The estimator does not currently inspect the `privateKeys` map and does not accept signing hints, so it cannot distinguish:
+
+| Case | Effect |
+|------|--------|
+| PQ AuthScript with custom `witnessScript` and/or `functionalArgs` (covenants) | **Under-estimates** by `len(witnessScript) - 1 + sum(len(functionalArgs))` weight units divided by 4 — risks `min relay fee not met` |
+| `authType: 0x00` NoAuth (no signature, no pubkey) | Over-estimates by ≈ 925 vbytes — safe but wasteful |
+| `authType: 0x02` Legacy AuthScript (ECDSA inside the AuthScript witness, not PQ) | Over-estimates by ≈ 925 vbytes — safe but wasteful |
+| `bareScriptHint` covenant-cancel branches | Witness includes the covenant script and selector byte, neither of which the estimator can size |
+
+If you build covenant spends, NoAuth witnesses, or Legacy AuthScript witnesses programmatically, compute the witness size yourself and add it to `VBYTES.baseTxOverheadBytes + sum(estimateOutputBytes)`. The exotic-witness path may grow a `signingHints` parameter in a future minor version.

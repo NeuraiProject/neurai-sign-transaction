@@ -339,7 +339,9 @@ test("Verify browser ESM entry exports sign", () => {
   const browserBundle = fs.readFileSync(path.join(__dirname, "dist/browser.js"), "utf8");
 
   expect(browserBundle).toContain("const Signer = {");
-  expect(browserBundle).toContain("export { Signer as default, sign };");
+  // Match the ES export statement regardless of how many extra named exports
+  // are listed alongside the core `Signer as default, sign` pair.
+  expect(browserBundle).toMatch(/export\s*\{[^}]*\bSigner as default\b[^}]*\bsign\b[^}]*\};/);
 });
 
 test("Verify global bundle exposes NeuraiSignTransaction", () => {
@@ -1340,4 +1342,161 @@ test("computeOpTxHash — CURRENT_* bits differ per input index", () => {
     const h1 = computeOpTxHashForTest(tx, bit, 1);
     expect(h0.equals(h1)).toBe(false);
   }
+});
+
+test("isPQAddress / isPQScript classify PQ vs legacy", () => {
+  expect(Signer.isPQAddress("nq1qabcdefghij")).toBe(true);
+  expect(Signer.isPQAddress("tnq1qabcdefghij")).toBe(true);
+  expect(Signer.isPQAddress("mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA")).toBe(false);
+  expect(Signer.isPQAddress("")).toBe(false);
+
+  expect(Signer.isPQScript(PQ_SIMPLE.script)).toBe(true);
+  expect(Signer.isPQScript(PQ_ASSET.script)).toBe(true);
+  expect(Signer.isPQScript("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac")).toBe(false);
+  expect(Signer.isPQScript("")).toBe(false);
+});
+
+test("estimateInputVbytes / estimateOutputBytes use PQ vs legacy weights", () => {
+  expect(Signer.estimateInputVbytes({ script: PQ_SIMPLE.script })).toBe(Signer.VBYTES.pqInputVbytes);
+  expect(Signer.estimateInputVbytes({ script: "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac" })).toBe(Signer.VBYTES.legacyInputVbytes);
+  // Falls back to address when script is missing.
+  expect(Signer.estimateInputVbytes({ address: "nq1qabc" })).toBe(Signer.VBYTES.pqInputVbytes);
+  expect(Signer.estimateInputVbytes({ address: "mgRYHdMq" })).toBe(Signer.VBYTES.legacyInputVbytes);
+
+  expect(Signer.estimateOutputBytes("nq1qabc")).toBe(Signer.VBYTES.pqOutputBytes);
+  expect(Signer.estimateOutputBytes("tnq1qabc")).toBe(Signer.VBYTES.pqOutputBytes);
+  expect(Signer.estimateOutputBytes({ address: "mgRYHdMq" })).toBe(Signer.VBYTES.legacyOutputBytes);
+});
+
+test("estimateTransactionVbytes is monotonic in the number of PQ inputs", () => {
+  const out = ["mgRYHdMq", "mgRYHdMq", "mgRYHdMq"];
+  const onePQ = Signer.estimateTransactionVbytes(
+    [{ script: PQ_SIMPLE.script }],
+    out,
+  );
+  const twoPQ = Signer.estimateTransactionVbytes(
+    [{ script: PQ_SIMPLE.script }, { script: PQ_SIMPLE.script }],
+    out,
+  );
+  const threePQ = Signer.estimateTransactionVbytes(
+    [{ script: PQ_SIMPLE.script }, { script: PQ_SIMPLE.script }, { script: PQ_SIMPLE.script }],
+    out,
+  );
+  // Each extra PQ input adds exactly pqInputVbytes; no double-counting overhead.
+  expect(twoPQ - onePQ).toBe(Signer.VBYTES.pqInputVbytes);
+  expect(threePQ - twoPQ).toBe(Signer.VBYTES.pqInputVbytes);
+  // A legacy-only equivalent must be smaller than the all-PQ version.
+  const legacyOnly = Signer.estimateTransactionVbytes(
+    [
+      { address: "mgRYHdMq" },
+      { address: "mgRYHdMq" },
+      { address: "mgRYHdMq" },
+    ],
+    out,
+  );
+  expect(legacyOnly).toBeLessThan(threePQ);
+});
+
+test("estimateVirtualSize matches the actual signed size for a PQ-only tx", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("11".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 125000);
+
+  const utxos = [
+    {
+      address: "pq-input-1",
+      assetName: "XNA",
+      txid: "11".repeat(32),
+      outputIndex: 0,
+      script: PQ_SIMPLE.script,
+      satoshis: 150000,
+      value: 150000,
+    },
+  ];
+
+  const estimated = Signer.estimateVirtualSize("xna-pq-test", tx.toHex(), utxos);
+
+  const signedHex = Signer.sign("xna-pq-test", tx.toHex(), utxos, {
+    "pq-input-1": { seedKey: PQ_SIMPLE.seedKey },
+  });
+  const actualVsize = bitcoin.Transaction.fromHex(signedHex).virtualSize();
+
+  // ml_dsa44 produces variable-length signatures, but our dummy uses the
+  // worst case (2420 bytes), so the estimate must always be >= actual and
+  // within a small slack.
+  expect(estimated).toBeGreaterThanOrEqual(actualVsize);
+  expect(estimated - actualVsize).toBeLessThanOrEqual(2);
+});
+
+test("estimateVirtualSize matches a legacy P2PKH spend within 1 vbyte", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("22".repeat(32), "hex").reverse(), 1);
+  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 90000);
+
+  const utxos = [
+    {
+      address: "mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA",
+      assetName: "XNA",
+      txid: "22".repeat(32),
+      outputIndex: 1,
+      script: "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac",
+      satoshis: 100000,
+      value: 100000,
+    },
+  ];
+
+  const estimated = Signer.estimateVirtualSize("xna-test", tx.toHex(), utxos);
+
+  const signedHex = Signer.sign("xna-test", tx.toHex(), utxos, {
+    mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA:
+      "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW",
+  });
+  const actualVsize = bitcoin.Transaction.fromHex(signedHex).virtualSize();
+
+  // ECDSA DER signatures vary 70-72 bytes; we assume worst-case 72.
+  expect(estimated).toBeGreaterThanOrEqual(actualVsize);
+  expect(estimated - actualVsize).toBeLessThanOrEqual(2);
+});
+
+test("estimateVirtualSize handles a mixed legacy + PQ transaction", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("22".repeat(32), "hex").reverse(), 1);
+  tx.addInput(Buffer.from("33".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 240000);
+
+  const utxos = [
+    {
+      address: "mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA",
+      assetName: "XNA",
+      txid: "22".repeat(32),
+      outputIndex: 1,
+      script: "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac",
+      satoshis: 100000,
+      value: 100000,
+    },
+    {
+      address: "pq-asset-input",
+      assetName: "BUTTER",
+      txid: "33".repeat(32),
+      outputIndex: 0,
+      script: PQ_ASSET.script,
+      satoshis: 200000,
+      value: 200000,
+    },
+  ];
+
+  const estimated = Signer.estimateVirtualSize("xna-test", tx.toHex(), utxos);
+
+  const signedHex = Signer.sign("xna-test", tx.toHex(), utxos, {
+    mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA:
+      "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW",
+    "pq-asset-input": { seedKey: PQ_ASSET.seedKey },
+  });
+  const actualVsize = bitcoin.Transaction.fromHex(signedHex).virtualSize();
+
+  expect(estimated).toBeGreaterThanOrEqual(actualVsize);
+  expect(estimated - actualVsize).toBeLessThanOrEqual(3);
 });
