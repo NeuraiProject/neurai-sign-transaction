@@ -935,6 +935,22 @@ function buildSpendTx(prevoutTxidBuf, refundSpk) {
   return tx;
 }
 
+// Rewrite the OP_CHAINCONTEXT selector inside an expiration gate from the
+// consensus-minimal OP_N form (`51` for HEIGHT, `52` for MTP) back to the
+// raw 1-byte push form (`01 01`, `01 02`) that older / external builders
+// emitted before neurai-scripts 0.6.2. Used by back-compat tests to verify
+// that the parser still round-trips the legacy encoding.
+//
+// Matches the byte immediately before OP_CHAINCONTEXT(d7) OP_GREATERTHAN(a0)
+// OP_VERIFY(69) — the gate is the only site in a partial-fill script that
+// emits this 3-opcode tail, so the substitution is unambiguous.
+function patchExpirationGateToLegacyEncoding(hex, expiration) {
+  const sel = expiration.mode === "height" ? 1 : 2;
+  const minimalSuffix = (0x50 + sel).toString(16).padStart(2, "0") + "d7a069";
+  const legacySuffix = "01" + sel.toString(16).padStart(2, "0") + "d7a069";
+  return hex.split(minimalSuffix).join(legacySuffix);
+}
+
 // ── Legacy covenant cancel ─────────────────────────────────────────────────
 
 function buildLegacyCancelFixture(opts) {
@@ -943,11 +959,18 @@ function buildLegacyCancelFixture(opts) {
   const sellerPKH = hash160Node(sellerPubkey);
   const sellerAddr = bitcoin.address.toBase58Check(sellerPKH, XNA_TESTNET.pubKeyHash);
 
-  const covenantHex = NeuraiScripts.buildPartialFillScriptHex({
+  let covenantHex = NeuraiScripts.buildPartialFillScriptHex({
     sellerAddress: sellerAddr,
     tokenId: "CAT",
     unitPriceSats: 100000000n,
+    ...(opts.expiration ? { expiration: opts.expiration } : {}),
   });
+  // Optional: rewrite the consensus-minimal selector (OP_1 / OP_2) back to
+  // the raw 1-byte push form (`01 0N`) to simulate a covenant produced by
+  // an external/older builder. The signer's parser must still accept it.
+  if (opts.legacyExpirationEncoding && opts.expiration) {
+    covenantHex = patchExpirationGateToLegacyEncoding(covenantHex, opts.expiration);
+  }
   const covenantBytes = Buffer.from(covenantHex, "hex");
   const wrap = wrapCovenantScriptPubKey(covenantBytes, "TREST", 10000000000n);
 
@@ -1089,13 +1112,17 @@ function buildPQCancelFixture(opts) {
   const paymentAddress = bitcoin.address.toBase58Check(paymentPKH, XNA_TESTNET.pubKeyHash);
 
   const selector = opts.selector ?? 0xff;
-  const covenantHex = NeuraiScripts.buildPartialFillScriptPQHex({
+  let covenantHex = NeuraiScripts.buildPartialFillScriptPQHex({
     paymentAddress,
     pubKeyCommitment: new Uint8Array(pubKeyCommitment),
     tokenId: "CAT",
     unitPriceSats: 100000000n,
     txHashSelector: selector,
+    ...(opts.expiration ? { expiration: opts.expiration } : {}),
   });
+  if (opts.legacyExpirationEncoding && opts.expiration) {
+    covenantHex = patchExpirationGateToLegacyEncoding(covenantHex, opts.expiration);
+  }
   const covenantBytes = Buffer.from(covenantHex, "hex");
   const wrap = wrapCovenantScriptPubKey(covenantBytes, "TREST", 10000000000n);
 
@@ -1198,6 +1225,74 @@ test("Covenant cancel PQ — rejects wrong seedKey (pubkey commitment mismatch)"
   expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], keys)).toThrow(
     /commitment mismatch/
   );
+});
+
+// ── Covenant cancel with expiration gate (neurai-scripts ≥ 0.6.2) ──────────
+
+test("Covenant cancel legacy — happy path with MTP expiration gate", () => {
+  const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const fx = buildLegacyCancelFixture({
+    sellerKeyPair,
+    expiration: { mode: "mtp", value: 1700000000n },
+  });
+
+  // Sanity: parser sees the expiration round-trip in the covenant.
+  const parsed = NeuraiScripts.parsePartialFillScript(fx.covenantHex);
+  expect(parsed.expiration).toEqual({ mode: "mtp", value: 1700000000n });
+
+  // Cancel branch ignores expiration, so signing must still succeed and
+  // produce the same NOAUTH witness shape as the no-expiration happy path.
+  const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
+  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  expect(witness).toHaveLength(5);
+  expect(witness[4].equals(fx.covenantBytes)).toBe(true);
+});
+
+test("Covenant cancel PQ — happy path with MTP expiration gate", () => {
+  const fx = buildPQCancelFixture({
+    selector: 0xff,
+    expiration: { mode: "mtp", value: 1700000000n },
+  });
+
+  const parsed = NeuraiScripts.parsePartialFillScriptPQ(fx.covenantHex);
+  expect(parsed.expiration).toEqual({ mode: "mtp", value: 1700000000n });
+
+  const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
+  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  expect(witness).toHaveLength(5);
+  expect(witness[4].equals(fx.covenantBytes)).toBe(true);
+});
+
+test("Covenant cancel legacy — accepts legacy raw-push selector encoding (0x01 0x02) for MTP", () => {
+  const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const fx = buildLegacyCancelFixture({
+    sellerKeyPair,
+    expiration: { mode: "mtp", value: 1700000000n },
+    legacyExpirationEncoding: true,
+  });
+
+  // The covenant hex in the fixture is patched to the non-minimal `01 02 d7`
+  // form. The parser in neurai-scripts must accept it (back-compat with
+  // builders that did not emit the OP_N selector).
+  expect(fx.covenantHex.includes("0102d7a069")).toBe(true);
+  expect(fx.covenantHex.includes("52d7a069")).toBe(false);
+
+  const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
+  expect(bitcoin.Transaction.fromHex(signedHex).ins[0].witness).toHaveLength(5);
+});
+
+test("Covenant cancel PQ — accepts legacy raw-push selector encoding (0x01 0x01) for HEIGHT", () => {
+  const fx = buildPQCancelFixture({
+    selector: 0xff,
+    expiration: { mode: "height", value: 1000n },
+    legacyExpirationEncoding: true,
+  });
+
+  expect(fx.covenantHex.includes("0101d7a069")).toBe(true);
+  expect(fx.covenantHex.includes("51d7a069")).toBe(false);
+
+  const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
+  expect(bitcoin.Transaction.fromHex(signedHex).ins[0].witness).toHaveLength(5);
 });
 
 // ───────────────────────────────────────────────────────────
