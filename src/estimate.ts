@@ -1,5 +1,9 @@
 import * as bitcoin from "bitcoinjs-lib";
 import { Buffer } from "buffer";
+import {
+  estimateTransactionSize,
+  parseTransaction,
+} from "@neuraiproject/neurai-create-transaction";
 import type { BareScriptSigningHint, IUTXO, SupportedNetwork } from "./shared";
 
 // Worst-case witness item sizes for a PQ AuthScript spend with the default
@@ -146,47 +150,66 @@ export function estimateVirtualSize(
   rawTransactionHex: string,
   utxos: ReadonlyArray<IUTXO>,
 ): number {
-  const unsignedTx = bitcoin.Transaction.fromHex(rawTransactionHex);
-
-  const tx = new bitcoin.Transaction();
-  tx.version = unsignedTx.version;
-  tx.locktime = unsignedTx.locktime;
-
-  for (let i = 0; i < unsignedTx.ins.length; i++) {
-    const input = unsignedTx.ins[i];
-    tx.addInput(Buffer.from(input.hash), input.index, input.sequence);
-  }
-
-  for (const out of unsignedTx.outs) {
-    tx.addOutput(out.script, out.value);
-  }
-
+  const decoded = parseTransaction(rawTransactionHex);
   const utxoMap = buildUTXOMap(utxos);
 
-  for (let i = 0; i < tx.ins.length; i++) {
-    const input = tx.ins[i];
-    const txid = Buffer.from(input.hash).reverse().toString("hex");
-    const vout = input.index;
+  const dummyFor = (txid: string, vout: number): { scriptSig: Buffer; witness: Buffer[] } => {
     const utxo = utxoMap.get(utxoKey(txid, vout));
-
     if (!utxo) {
       // Caller did not supply a UTXO for this input. Assume legacy P2PKH —
       // the signer would skip this input too, but for size estimation the
       // worst-case legacy scriptSig is the safer default than nothing.
-      tx.setInputScript(i, dummyLegacyScriptSig());
-      continue;
+      return { scriptSig: dummyLegacyScriptSig(), witness: [] };
     }
-
     if (isPQScript(utxo.script)) {
-      tx.setInputScript(i, Buffer.alloc(0));
-      tx.setWitness(
-        i,
-        utxo.bareScriptHint
+      return {
+        scriptSig: Buffer.alloc(0),
+        witness: utxo.bareScriptHint
           ? dummyCovenantWitness(utxo.bareScriptHint)
-          : dummyPQWitness()
-      );
-    } else {
-      tx.setInputScript(i, dummyLegacyScriptSig());
+          : dummyPQWitness(),
+      };
+    }
+    return { scriptSig: dummyLegacyScriptSig(), witness: [] };
+  };
+
+  if (decoded.version === 3) {
+    // The codec accounts for vrefin (CompactSize + 36 bytes per reference)
+    // and the witness discount, mirroring the node's serialization.
+    return estimateTransactionSize({
+      ...decoded,
+      inputs: decoded.inputs.map((input) => {
+        const dummy = dummyFor(input.txid, input.vout);
+        return {
+          ...input,
+          scriptSigHex: dummy.scriptSig.toString("hex"),
+          witness: dummy.witness.map((item) => item.toString("hex")),
+        };
+      }),
+    }).vsize;
+  }
+
+  const tx = new bitcoin.Transaction();
+  tx.version = decoded.version;
+  tx.locktime = decoded.locktime;
+
+  for (const input of decoded.inputs) {
+    tx.addInput(
+      Buffer.from(input.txid, "hex").reverse(),
+      input.vout,
+      input.sequence
+    );
+  }
+
+  for (const out of decoded.outputs) {
+    tx.addOutput(Buffer.from(out.scriptPubKeyHex, "hex"), Number(out.valueSats));
+  }
+
+  for (let i = 0; i < tx.ins.length; i++) {
+    const input = decoded.inputs[i];
+    const dummy = dummyFor(input.txid, input.vout);
+    tx.setInputScript(i, dummy.scriptSig);
+    if (dummy.witness.length > 0) {
+      tx.setWitness(i, dummy.witness);
     }
   }
 

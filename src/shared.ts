@@ -12,6 +12,12 @@ import {
   parsePartialFillScriptPQ,
   splitAssetWrappedScriptPubKey,
 } from "@neuraiproject/neurai-scripts";
+import {
+  parseTransaction,
+  serializeTransaction,
+  type DecodedTransaction,
+  type RefInput,
+} from "@neuraiproject/neurai-create-transaction";
 import { computeOpTxHash } from "./tx-hash";
 import { xna } from "./coins/xna";
 import { xnaLegacy } from "./coins/xna-legacy";
@@ -186,6 +192,10 @@ function bufferFromHex(value: string, label: string): Buffer {
   }
 
   return Buffer.from(value, "hex");
+}
+
+function bufferFromHexAllowEmpty(value: string, label: string): Buffer {
+  return value === "" ? Buffer.alloc(0) : bufferFromHex(value, label);
 }
 
 function toBigIntAmount(value: unknown, label: string): bigint {
@@ -582,13 +592,92 @@ function getAuthScriptCommitment(
   return taggedHash(AUTHSCRIPT_TAG, preimage);
 }
 
+/**
+ * NIP-014 (tx v3) reference-input data, precomputed once per sign() call.
+ * `concat` is the raw concatenation of 36-byte serialized outpoints
+ * (txid LE ‖ vout u32LE) — possibly EMPTY, which still contributes
+ * `hash256("")` to the v3 sighash (the node inserts hashRefInputs for every
+ * v3 tx, `interpreter.cpp:2702-2711`). Null means the tx is not v3.
+ */
+interface IRefInputsData {
+  count: number;
+  concat: Buffer;
+}
+
+function serializeRefInputOutpoint(ref: RefInput): Buffer {
+  const txid = bufferFromHex(ref.txid, "vrefin txid");
+  if (txid.length !== 32) {
+    throw new Error(`vrefin txid must be 32 bytes, got ${txid.length}`);
+  }
+  const index = Buffer.alloc(4);
+  index.writeUInt32LE(ref.vout, 0);
+  return Buffer.concat([Buffer.from(txid).reverse(), index]);
+}
+
+function getRefInputsData(decoded: DecodedTransaction): IRefInputsData | null {
+  if (decoded.version !== 3) return null;
+  const vrefin = decoded.vrefin ?? [];
+  return {
+    count: vrefin.length,
+    concat: Buffer.concat(vrefin.map(serializeRefInputOutpoint)),
+  };
+}
+
+/**
+ * Legacy (SIGVERSION_BASE) sighash for a v3 transaction. bitcoinjs'
+ * `hashForSignature` cannot produce it: the node's
+ * `CTransactionSignatureSerializer` serializes `CompactSize(vrefin.length)`
+ * plus each outpoint between vout and nLockTime, unconditionally for v3.
+ * Only SIGHASH_ALL (without ANYONECANPAY) is implemented — the only mode
+ * this library signs with.
+ */
+function hashForLegacySignatureV3(
+  tx: bitcoin.Transaction,
+  refInputs: IRefInputsData,
+  inIndex: number,
+  scriptPubKey: Buffer,
+  hashType: number
+): Buffer {
+  if ((hashType & 0x1f) !== bitcoin.Transaction.SIGHASH_ALL || (hashType & bitcoin.Transaction.SIGHASH_ANYONECANPAY) !== 0) {
+    throw new Error("hashForLegacySignatureV3 only supports plain SIGHASH_ALL");
+  }
+
+  const version = Buffer.alloc(4);
+  version.writeInt32LE(tx.version, 0);
+  const locktime = Buffer.alloc(4);
+  locktime.writeUInt32LE(tx.locktime, 0);
+  const hashTypeBuffer = Buffer.alloc(4);
+  hashTypeBuffer.writeUInt32LE(hashType >>> 0, 0);
+
+  const parts: Buffer[] = [version, encodeVarInt(tx.ins.length)];
+  for (let i = 0; i < tx.ins.length; i++) {
+    const input = tx.ins[i];
+    const sequence = Buffer.alloc(4);
+    sequence.writeUInt32LE(input.sequence, 0);
+    parts.push(
+      serializeOutpoint(input),
+      i === inIndex ? encodeVarSlice(scriptPubKey) : encodeVarInt(0),
+      sequence
+    );
+  }
+  parts.push(encodeVarInt(tx.outs.length));
+  for (const out of tx.outs) {
+    parts.push(serializeOutput(out));
+  }
+  parts.push(encodeVarInt(refInputs.count), refInputs.concat);
+  parts.push(locktime, hashTypeBuffer);
+
+  return hash256(Buffer.concat(parts));
+}
+
 function hashForAuthScript(
   tx: bitcoin.Transaction,
   inIndex: number,
   witnessScript: Buffer,
   amount: number,
   hashType: number,
-  authType: number
+  authType: number,
+  refInputs: IRefInputsData | null = null
 ): Buffer {
   const baseType = hashType & 0x1f;
   const anyoneCanPay = (hashType & bitcoin.Transaction.SIGHASH_ANYONECANPAY) !== 0;
@@ -648,6 +737,9 @@ function hashForAuthScript(
     amountBuffer,
     sequence,
     hashOutputs,
+    // NIP-014: for v3, hashRefInputs goes between hashOutputs and locktime,
+    // ALWAYS — an empty vrefin contributes hash256(""), not a zero hash.
+    ...(refInputs ? [hash256(refInputs.concat)] : []),
     locktime,
     Buffer.from([authType]),
     hashTypeBuffer,
@@ -706,10 +798,42 @@ export function sign(
   if (!COIN) throw new Error("Invalid network specified");
   COIN.bech32 = COIN.bech32 || "";
 
-  const unsignedTx = bitcoin.Transaction.fromHex(rawTransactionHex);
+  // The codec understands v1/v2/v3 (with vrefin); bitcoinjs alone would
+  // misparse a v3 transaction. The bitcoinjs Transaction remains the
+  // internal working representation — for v3 it is a "reduced" view that
+  // never touches the wire: the signed hex is re-serialized by the codec.
+  const decoded = parseTransaction(rawTransactionHex);
+  const refInputs = getRefInputsData(decoded);
+
+  // Consensus (tx_verify.cpp:520-537): within a v3 tx, vrefin entries must
+  // be unique (bad-txns-vrefin-duplicate) and must not overlap any vin
+  // prevout (bad-txns-vrefin-overlap-vin). Fail at signing time instead of
+  // producing a tx the node is guaranteed to reject.
+  if (refInputs && refInputs.count > 0) {
+    const prevouts = new Set(
+      decoded.inputs.map((input) => getUTXOKey(input.txid, input.vout))
+    );
+    const seenRefs = new Set<string>();
+    for (const ref of decoded.vrefin) {
+      const key = getUTXOKey(ref.txid, ref.vout);
+      if (seenRefs.has(key)) {
+        throw new Error(
+          `vrefin reference ${ref.txid}:${ref.vout} is duplicated ` +
+            `(the node rejects this with bad-txns-vrefin-duplicate)`
+        );
+      }
+      seenRefs.add(key);
+      if (prevouts.has(key)) {
+        throw new Error(
+          `vrefin reference ${ref.txid}:${ref.vout} overlaps a transaction input ` +
+            `(the node rejects this with bad-txns-vrefin-overlap-vin)`
+        );
+      }
+    }
+  }
   const tx = new bitcoin.Transaction();
-  tx.version = unsignedTx.version;
-  tx.locktime = unsignedTx.locktime;
+  tx.version = decoded.version;
+  tx.locktime = decoded.locktime;
 
   const legacyKeyPairCache = new Map<string, ReturnType<typeof ECPair.fromWIF>>();
   const pqMaterialCache = new Map<string, IPQSigningMaterial>();
@@ -759,16 +883,30 @@ export function sign(
     return utxoMap.get(getUTXOKey(txid, vout));
   }
 
-  for (let i = 0; i < unsignedTx.ins.length; i++) {
-    const input = unsignedTx.ins[i];
-    tx.addInput(Buffer.from(input.hash), input.index, input.sequence, input.script);
-    if (input.witness.length > 0) {
-      tx.setWitness(i, input.witness);
+  for (let i = 0; i < decoded.inputs.length; i++) {
+    const input = decoded.inputs[i];
+    tx.addInput(
+      Buffer.from(bufferFromHex(input.txid, "input txid")).reverse(),
+      input.vout,
+      input.sequence,
+      bufferFromHexAllowEmpty(input.scriptSigHex ?? "", "input scriptSig")
+    );
+    if (input.witness && input.witness.length > 0) {
+      tx.setWitness(
+        i,
+        input.witness.map((item, w) =>
+          bufferFromHexAllowEmpty(item, `witness[${w}]`)
+        )
+      );
     }
   }
 
-  for (const out of unsignedTx.outs) {
-    tx.addOutput(out.script, out.value);
+  for (const out of decoded.outputs) {
+    const value = Number(out.valueSats);
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(`Output value ${out.valueSats} out of safe integer range`);
+    }
+    tx.addOutput(bufferFromHex(out.scriptPubKeyHex, "output script"), value);
   }
 
   // NIP-025: on networks where nASSETRBFBlockEnabled is active, a tx that
@@ -973,7 +1111,8 @@ export function sign(
           covenantScriptBytes,
           amount,
           HASH_TYPE,
-          NOAUTH_TYPE
+          NOAUTH_TYPE,
+          refInputs
         );
         const rawSignature = keyPair.sign(sighash);
         const signatureWithHashType = bitcoin.script.signature.encode(
@@ -1140,7 +1279,8 @@ export function sign(
           spendTemplate.witnessScript,
           getSighashAmount(utxo),
           HASH_TYPE,
-          spendTemplate.authType
+          spendTemplate.authType,
+          refInputs
         );
         const signature = Buffer.from(
           ml_dsa44.sign(new Uint8Array(sighash), new Uint8Array(pqMaterial.secretKey), {
@@ -1163,7 +1303,8 @@ export function sign(
           spendTemplate.witnessScript,
           getSighashAmount(utxo),
           HASH_TYPE,
-          spendTemplate.authType
+          spendTemplate.authType,
+          refInputs
         );
         const rawSignature = keyPair.sign(sighash);
         const signatureWithHashType = bitcoin.script.signature.encode(
@@ -1203,7 +1344,9 @@ export function sign(
     }
 
     const keyPair = getKeyPairByAddress(utxo.address);
-    const sighash = tx.hashForSignature(i, scriptPubKey, HASH_TYPE);
+    const sighash = refInputs
+      ? hashForLegacySignatureV3(tx, refInputs, i, scriptPubKey, HASH_TYPE)
+      : tx.hashForSignature(i, scriptPubKey, HASH_TYPE);
     const rawSignature = keyPair.sign(sighash);
 
     const signatureWithHashType = bitcoin.script.signature.encode(
@@ -1227,6 +1370,20 @@ export function sign(
       witnessItems: input.witness?.length ?? 0,
     })),
   });
+
+  if (refInputs) {
+    // v3 exit criterion: the signed hex is serialized by the codec end to
+    // end. bitcoinjs' toHex() does not know vrefin and would silently drop
+    // it, changing the txid.
+    return serializeTransaction({
+      ...decoded,
+      inputs: decoded.inputs.map((input, i) => ({
+        ...input,
+        scriptSigHex: Buffer.from(tx.ins[i].script).toString("hex"),
+        witness: tx.ins[i].witness.map((item) => Buffer.from(item).toString("hex")),
+      })),
+    });
+  }
 
   return tx.toHex();
 }

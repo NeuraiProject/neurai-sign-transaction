@@ -5876,16 +5876,16 @@ function requireBs58 () {
 	return bs58;
 }
 
-var base$2;
+var base$3;
 var hasRequiredBase;
 
 function requireBase () {
-	if (hasRequiredBase) return base$2;
+	if (hasRequiredBase) return base$3;
 	hasRequiredBase = 1;
 
 	var base58 = requireBs58();
 
-	base$2 = function (checksumFn) {
+	base$3 = function (checksumFn) {
 	  // Encode a buffer as a base58-check encoded string
 	  function encode (payload) {
 	    var payloadU8 = Uint8Array.from(payload);
@@ -5931,7 +5931,7 @@ function requireBase () {
 	    decodeUnsafe: decodeUnsafe
 	  }
 	};
-	return base$2;
+	return base$3;
 }
 
 var bs58check;
@@ -6311,15 +6311,15 @@ function requireP2sh () {
 
 var p2wpkh = {};
 
-var dist$2 = {};
+var dist$3 = {};
 
-var hasRequiredDist$2;
+var hasRequiredDist$3;
 
-function requireDist$2 () {
-	if (hasRequiredDist$2) return dist$2;
-	hasRequiredDist$2 = 1;
-	Object.defineProperty(dist$2, "__esModule", { value: true });
-	dist$2.bech32m = dist$2.bech32 = void 0;
+function requireDist$3 () {
+	if (hasRequiredDist$3) return dist$3;
+	hasRequiredDist$3 = 1;
+	Object.defineProperty(dist$3, "__esModule", { value: true });
+	dist$3.bech32m = dist$3.bech32 = void 0;
 	const ALPHABET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 	const ALPHABET_MAP = {};
 	for (let z = 0; z < ALPHABET.length; z++) {
@@ -6485,9 +6485,9 @@ function requireDist$2 () {
 	        fromWords,
 	    };
 	}
-	dist$2.bech32 = getLibraryFromEncoding('bech32');
-	dist$2.bech32m = getLibraryFromEncoding('bech32m');
-	return dist$2;
+	dist$3.bech32 = getLibraryFromEncoding('bech32');
+	dist$3.bech32m = getLibraryFromEncoding('bech32m');
+	return dist$3;
 }
 
 var hasRequiredP2wpkh;
@@ -6502,7 +6502,7 @@ function requireP2wpkh () {
 	const bscript = requireScript();
 	const types_1 = requireTypes();
 	const lazy = requireLazy();
-	const bech32_1 = requireDist$2();
+	const bech32_1 = requireDist$3();
 	const OPS = bscript.OPS;
 	const EMPTY_BUFFER = bufferExports.Buffer.alloc(0);
 	// witness: {signature} {pubKey}
@@ -6651,7 +6651,7 @@ function requireP2wsh () {
 	const bscript = requireScript();
 	const types_1 = requireTypes();
 	const lazy = requireLazy();
-	const bech32_1 = requireDist$2();
+	const bech32_1 = requireDist$3();
 	const OPS = bscript.OPS;
 	const EMPTY_BUFFER = bufferExports.Buffer.alloc(0);
 	function chunkHasUncompressedPubkey(chunk) {
@@ -7497,7 +7497,7 @@ function requireP2tr () {
 	const ecc_lib_1 = requireEcc_lib();
 	const bip341_1 = requireBip341();
 	const lazy = requireLazy();
-	const bech32_1 = requireDist$2();
+	const bech32_1 = requireDist$3();
 	const address_1 = requireAddress();
 	const OPS = bscript.OPS;
 	const TAPROOT_WITNESS_VERSION = 0x01;
@@ -7878,7 +7878,7 @@ function requireAddress () {
 	const payments = requirePayments();
 	const bscript = requireScript();
 	const types_1 = requireTypes();
-	const bech32_1 = requireDist$2();
+	const bech32_1 = requireDist$3();
 	const bs58check = requireBs58check();
 	const FUTURE_SEGWIT_MAX_SIZE = 40;
 	const FUTURE_SEGWIT_MIN_SIZE = 2;
@@ -14569,7 +14569,7 @@ const sha256$1 = sha256$2;
 // Copyright (c) 2014-2018 The Bitcoin Core developers (base58.cpp)
 // Distributed under the MIT software license, see the accompanying
 // file LICENSE or http://www.opensource.org/licenses/mit-license.php.
-function base$1 (ALPHABET) {
+function base$2 (ALPHABET) {
   if (ALPHABET.length >= 255) { throw new TypeError('Alphabet too long') }
   const BASE_MAP = new Uint8Array(256);
   for (let j = 0; j < BASE_MAP.length; j++) {
@@ -14688,8 +14688,8 @@ function base$1 (ALPHABET) {
   }
 }
 
-var ALPHABET$1 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-var base58 = base$1(ALPHABET$1);
+var ALPHABET$2 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+var base58 = base$2(ALPHABET$2);
 
 function bs58checkBase (checksumFn) {
     // Encode a buffer as a base58-check encoded string
@@ -15254,7 +15254,7 @@ function ECPairFactory(ecc) {
   };
 }
 
-var dist$1 = {};
+var dist$2 = {};
 
 var secp256k1 = {};
 
@@ -18855,11 +18855,11 @@ function requireUtils () {
 	return utils;
 }
 
-var hasRequiredDist$1;
+var hasRequiredDist$2;
 
-function requireDist$1 () {
-	if (hasRequiredDist$1) return dist$1;
-	hasRequiredDist$1 = 1;
+function requireDist$2 () {
+	if (hasRequiredDist$2) return dist$2;
+	hasRequiredDist$2 = 1;
 
 	var secp256k1 = /*@__PURE__*/ requireSecp256k1();
 	var mod = /*@__PURE__*/ requireModular();
@@ -19305,31 +19305,31 @@ function requireDist$1 () {
 	  return secp256k1.schnorr.verify(signature, h, Q);
 	}
 
-	dist$1.isPoint = isPoint;
-	dist$1.isPointCompressed = isPointCompressed;
-	dist$1.isPrivate = isPrivate;
-	dist$1.isXOnlyPoint = isXOnlyPoint;
-	dist$1.pointAdd = pointAdd;
-	dist$1.pointAddScalar = pointAddScalar;
-	dist$1.pointCompress = pointCompress;
-	dist$1.pointFromScalar = pointFromScalar;
-	dist$1.pointMultiply = pointMultiply;
-	dist$1.privateAdd = privateAdd;
-	dist$1.privateNegate = privateNegate;
-	dist$1.privateSub = privateSub;
-	dist$1.recover = recover;
-	dist$1.sign = sign;
-	dist$1.signRecoverable = signRecoverable;
-	dist$1.signSchnorr = signSchnorr;
-	dist$1.verify = verify;
-	dist$1.verifySchnorr = verifySchnorr;
-	dist$1.xOnlyPointAddTweak = xOnlyPointAddTweak;
-	dist$1.xOnlyPointFromPoint = xOnlyPointFromPoint;
-	dist$1.xOnlyPointFromScalar = xOnlyPointFromScalar;
-	return dist$1;
+	dist$2.isPoint = isPoint;
+	dist$2.isPointCompressed = isPointCompressed;
+	dist$2.isPrivate = isPrivate;
+	dist$2.isXOnlyPoint = isXOnlyPoint;
+	dist$2.pointAdd = pointAdd;
+	dist$2.pointAddScalar = pointAddScalar;
+	dist$2.pointCompress = pointCompress;
+	dist$2.pointFromScalar = pointFromScalar;
+	dist$2.pointMultiply = pointMultiply;
+	dist$2.privateAdd = privateAdd;
+	dist$2.privateNegate = privateNegate;
+	dist$2.privateSub = privateSub;
+	dist$2.recover = recover;
+	dist$2.sign = sign;
+	dist$2.signRecoverable = signRecoverable;
+	dist$2.signSchnorr = signSchnorr;
+	dist$2.verify = verify;
+	dist$2.verifySchnorr = verifySchnorr;
+	dist$2.xOnlyPointAddTweak = xOnlyPointAddTweak;
+	dist$2.xOnlyPointFromPoint = xOnlyPointFromPoint;
+	dist$2.xOnlyPointFromScalar = xOnlyPointFromScalar;
+	return dist$2;
 }
 
-var distExports = requireDist$1();
+var distExports = requireDist$2();
 var index = /*@__PURE__*/getDefaultExportFromCjs(distExports);
 
 var ecc = /*#__PURE__*/_mergeNamespaces({
@@ -19411,7 +19411,7 @@ const swap32IfBE = isLE
     ? (u) => u
     : byteSwap32;
 /** Copies several Uint8Arrays into one. */
-function concatBytes(...arrays) {
+function concatBytes$1(...arrays) {
     let sum = 0;
     for (let i = 0; i < arrays.length; i++) {
         const a = arrays[i];
@@ -20068,7 +20068,7 @@ function getMessage(msg, ctx = EMPTY) {
     abytes(ctx);
     if (ctx.length > 255)
         throw new RangeError('context should be 255 bytes or less');
-    return concatBytes(new Uint8Array([0, ctx.length]), ctx, msg);
+    return concatBytes$1(new Uint8Array([0, ctx.length]), ctx, msg);
 }
 // DER tag+length plus the shared NIST hash OID arc 2.16.840.1.101.3.4.2.* used by the
 // FIPS 204 / FIPS 205 pre-hash wrappers; the final byte selects SHA-256, SHA-512, SHAKE128,
@@ -20130,7 +20130,7 @@ function getMessagePrehash(hash, msg, ctx = EMPTY) {
     if (ctx.length > 255)
         throw new RangeError('context should be 255 bytes or less');
     const hashed = hash(msg);
-    return concatBytes(new Uint8Array([1, ctx.length]), ctx, hash.oid, hashed);
+    return concatBytes$1(new Uint8Array([1, ctx.length]), ctx, hash.oid, hashed);
 }
 
 /**
@@ -20937,22 +20937,22 @@ const ml_dsa44 = /* @__PURE__ */ (() => getDilithium({
  * duplicated here to keep this package free of runtime coupling beyond its
  * declared `dependencies` field. All sizes are little-endian, per Neurai.
  */
-function ensureHex(hex, label = 'hex') {
+function ensureHex$1(hex, label = 'hex') {
     const normalized = String(hex || '').trim().toLowerCase();
     if (!/^[0-9a-f]*$/.test(normalized) || normalized.length % 2 !== 0) {
         throw new Error(`Invalid ${label}: expected even-length hex string`);
     }
     return normalized;
 }
-function hexToBytes(hex) {
-    const normalized = ensureHex(hex);
+function hexToBytes$1(hex) {
+    const normalized = ensureHex$1(hex);
     const bytes = new Uint8Array(normalized.length / 2);
     for (let i = 0; i < normalized.length; i += 2) {
         bytes[i / 2] = Number.parseInt(normalized.slice(i, i + 2), 16);
     }
     return bytes;
 }
-function bytesToHex(bytes) {
+function bytesToHex$1(bytes) {
     return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
 }
 function bytesEqual(a, b) {
@@ -21122,6 +21122,1137 @@ function buildAuthScriptWitnessNoAuth(input) {
         ...(input.args ?? []),
         input.witnessScript
     ];
+}
+
+// base-x encoding / decoding
+// Copyright (c) 2018 base-x contributors
+// Copyright (c) 2014-2018 The Bitcoin Core developers (base58.cpp)
+// Distributed under the MIT software license, see the accompanying
+// file LICENSE or http://www.opensource.org/licenses/mit-license.php.
+function base$1 (ALPHABET) {
+  if (ALPHABET.length >= 255) { throw new TypeError('Alphabet too long') }
+  const BASE_MAP = new Uint8Array(256);
+  for (let j = 0; j < BASE_MAP.length; j++) {
+    BASE_MAP[j] = 255;
+  }
+  for (let i = 0; i < ALPHABET.length; i++) {
+    const x = ALPHABET.charAt(i);
+    const xc = x.charCodeAt(0);
+    if (BASE_MAP[xc] !== 255) { throw new TypeError(x + ' is ambiguous') }
+    BASE_MAP[xc] = i;
+  }
+  const BASE = ALPHABET.length;
+  const LEADER = ALPHABET.charAt(0);
+  const FACTOR = Math.log(BASE) / Math.log(256); // log(BASE) / log(256), rounded up
+  const iFACTOR = Math.log(256) / Math.log(BASE); // log(256) / log(BASE), rounded up
+  function encode (source) {
+    // eslint-disable-next-line no-empty
+    if (source instanceof Uint8Array) ; else if (ArrayBuffer.isView(source)) {
+      source = new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
+    } else if (Array.isArray(source)) {
+      source = Uint8Array.from(source);
+    }
+    if (!(source instanceof Uint8Array)) { throw new TypeError('Expected Uint8Array') }
+    if (source.length === 0) { return '' }
+    // Skip & count leading zeroes.
+    let zeroes = 0;
+    let length = 0;
+    let pbegin = 0;
+    const pend = source.length;
+    while (pbegin !== pend && source[pbegin] === 0) {
+      pbegin++;
+      zeroes++;
+    }
+    // Allocate enough space in big-endian base58 representation.
+    const size = ((pend - pbegin) * iFACTOR + 1) >>> 0;
+    const b58 = new Uint8Array(size);
+    // Process the bytes.
+    while (pbegin !== pend) {
+      let carry = source[pbegin];
+      // Apply "b58 = b58 * 256 + ch".
+      let i = 0;
+      for (let it1 = size - 1; (carry !== 0 || i < length) && (it1 !== -1); it1--, i++) {
+        carry += (256 * b58[it1]) >>> 0;
+        b58[it1] = (carry % BASE) >>> 0;
+        carry = (carry / BASE) >>> 0;
+      }
+      if (carry !== 0) { throw new Error('Non-zero carry') }
+      length = i;
+      pbegin++;
+    }
+    // Skip leading zeroes in base58 result.
+    let it2 = size - length;
+    while (it2 !== size && b58[it2] === 0) {
+      it2++;
+    }
+    // Translate the result into a string.
+    let str = LEADER.repeat(zeroes);
+    for (; it2 < size; ++it2) { str += ALPHABET.charAt(b58[it2]); }
+    return str
+  }
+  function decodeUnsafe (source) {
+    if (typeof source !== 'string') { throw new TypeError('Expected String') }
+    if (source.length === 0) { return new Uint8Array() }
+    let psz = 0;
+    // Skip and count leading '1's.
+    let zeroes = 0;
+    let length = 0;
+    while (source[psz] === LEADER) {
+      zeroes++;
+      psz++;
+    }
+    // Allocate enough space in big-endian base256 representation.
+    const size = (((source.length - psz) * FACTOR) + 1) >>> 0; // log(58) / log(256), rounded up.
+    const b256 = new Uint8Array(size);
+    // Process the characters.
+    while (psz < source.length) {
+      // Find code of next character
+      const charCode = source.charCodeAt(psz);
+      // Base map can not be indexed using char code
+      if (charCode > 255) { return }
+      // Decode character
+      let carry = BASE_MAP[charCode];
+      // Invalid character
+      if (carry === 255) { return }
+      let i = 0;
+      for (let it3 = size - 1; (carry !== 0 || i < length) && (it3 !== -1); it3--, i++) {
+        carry += (BASE * b256[it3]) >>> 0;
+        b256[it3] = (carry % 256) >>> 0;
+        carry = (carry / 256) >>> 0;
+      }
+      if (carry !== 0) { throw new Error('Non-zero carry') }
+      length = i;
+      psz++;
+    }
+    // Skip leading zeroes in b256.
+    let it4 = size - length;
+    while (it4 !== size && b256[it4] === 0) {
+      it4++;
+    }
+    const vch = new Uint8Array(zeroes + (size - it4));
+    let j = zeroes;
+    while (it4 !== size) {
+      vch[j++] = b256[it4++];
+    }
+    return vch
+  }
+  function decode (string) {
+    const buffer = decodeUnsafe(string);
+    if (buffer) { return buffer }
+    throw new Error('Non-base' + BASE + ' character')
+  }
+  return {
+    encode,
+    decodeUnsafe,
+    decode
+  }
+}
+
+var ALPHABET$1 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+base$1(ALPHABET$1);
+
+var dist$1 = {};
+
+var hasRequiredDist$1;
+
+function requireDist$1 () {
+	if (hasRequiredDist$1) return dist$1;
+	hasRequiredDist$1 = 1;
+	Object.defineProperty(dist$1, "__esModule", { value: true });
+	dist$1.bech32m = dist$1.bech32 = void 0;
+	const ALPHABET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+	const ALPHABET_MAP = {};
+	for (let z = 0; z < ALPHABET.length; z++) {
+	    const x = ALPHABET.charAt(z);
+	    ALPHABET_MAP[x] = z;
+	}
+	function polymodStep(pre) {
+	    const b = pre >> 25;
+	    return (((pre & 0x1ffffff) << 5) ^
+	        (-((b >> 0) & 1) & 0x3b6a57b2) ^
+	        (-((b >> 1) & 1) & 0x26508e6d) ^
+	        (-((b >> 2) & 1) & 0x1ea119fa) ^
+	        (-((b >> 3) & 1) & 0x3d4233dd) ^
+	        (-((b >> 4) & 1) & 0x2a1462b3));
+	}
+	function prefixChk(prefix) {
+	    let chk = 1;
+	    for (let i = 0; i < prefix.length; ++i) {
+	        const c = prefix.charCodeAt(i);
+	        if (c < 33 || c > 126)
+	            return 'Invalid prefix (' + prefix + ')';
+	        chk = polymodStep(chk) ^ (c >> 5);
+	    }
+	    chk = polymodStep(chk);
+	    for (let i = 0; i < prefix.length; ++i) {
+	        const v = prefix.charCodeAt(i);
+	        chk = polymodStep(chk) ^ (v & 0x1f);
+	    }
+	    return chk;
+	}
+	function convert(data, inBits, outBits, pad) {
+	    let value = 0;
+	    let bits = 0;
+	    const maxV = (1 << outBits) - 1;
+	    const result = [];
+	    for (let i = 0; i < data.length; ++i) {
+	        value = (value << inBits) | data[i];
+	        bits += inBits;
+	        while (bits >= outBits) {
+	            bits -= outBits;
+	            result.push((value >> bits) & maxV);
+	        }
+	    }
+	    if (pad) {
+	        if (bits > 0) {
+	            result.push((value << (outBits - bits)) & maxV);
+	        }
+	    }
+	    else {
+	        if (bits >= inBits)
+	            return 'Excess padding';
+	        if ((value << (outBits - bits)) & maxV)
+	            return 'Non-zero padding';
+	    }
+	    return result;
+	}
+	function toWords(bytes) {
+	    return convert(bytes, 8, 5, true);
+	}
+	function fromWordsUnsafe(words) {
+	    const res = convert(words, 5, 8, false);
+	    if (Array.isArray(res))
+	        return res;
+	}
+	function fromWords(words) {
+	    const res = convert(words, 5, 8, false);
+	    if (Array.isArray(res))
+	        return res;
+	    throw new Error(res);
+	}
+	function getLibraryFromEncoding(encoding) {
+	    let ENCODING_CONST;
+	    if (encoding === 'bech32') {
+	        ENCODING_CONST = 1;
+	    }
+	    else {
+	        ENCODING_CONST = 0x2bc830a3;
+	    }
+	    function encode(prefix, words, LIMIT) {
+	        LIMIT = LIMIT || 90;
+	        if (prefix.length + 7 + words.length > LIMIT)
+	            throw new TypeError('Exceeds length limit');
+	        prefix = prefix.toLowerCase();
+	        // determine chk mod
+	        let chk = prefixChk(prefix);
+	        if (typeof chk === 'string')
+	            throw new Error(chk);
+	        let result = prefix + '1';
+	        for (let i = 0; i < words.length; ++i) {
+	            const x = words[i];
+	            if (x >> 5 !== 0)
+	                throw new Error('Non 5-bit word');
+	            chk = polymodStep(chk) ^ x;
+	            result += ALPHABET.charAt(x);
+	        }
+	        for (let i = 0; i < 6; ++i) {
+	            chk = polymodStep(chk);
+	        }
+	        chk ^= ENCODING_CONST;
+	        for (let i = 0; i < 6; ++i) {
+	            const v = (chk >> ((5 - i) * 5)) & 0x1f;
+	            result += ALPHABET.charAt(v);
+	        }
+	        return result;
+	    }
+	    function __decode(str, LIMIT) {
+	        LIMIT = LIMIT || 90;
+	        if (str.length < 8)
+	            return str + ' too short';
+	        if (str.length > LIMIT)
+	            return 'Exceeds length limit';
+	        // don't allow mixed case
+	        const lowered = str.toLowerCase();
+	        const uppered = str.toUpperCase();
+	        if (str !== lowered && str !== uppered)
+	            return 'Mixed-case string ' + str;
+	        str = lowered;
+	        const split = str.lastIndexOf('1');
+	        if (split === -1)
+	            return 'No separator character for ' + str;
+	        if (split === 0)
+	            return 'Missing prefix for ' + str;
+	        const prefix = str.slice(0, split);
+	        const wordChars = str.slice(split + 1);
+	        if (wordChars.length < 6)
+	            return 'Data too short';
+	        let chk = prefixChk(prefix);
+	        if (typeof chk === 'string')
+	            return chk;
+	        const words = [];
+	        for (let i = 0; i < wordChars.length; ++i) {
+	            const c = wordChars.charAt(i);
+	            const v = ALPHABET_MAP[c];
+	            if (v === undefined)
+	                return 'Unknown character ' + c;
+	            chk = polymodStep(chk) ^ v;
+	            // not in the checksum?
+	            if (i + 6 >= wordChars.length)
+	                continue;
+	            words.push(v);
+	        }
+	        if (chk !== ENCODING_CONST)
+	            return 'Invalid checksum for ' + str;
+	        return { prefix, words };
+	    }
+	    function decodeUnsafe(str, LIMIT) {
+	        const res = __decode(str, LIMIT);
+	        if (typeof res === 'object')
+	            return res;
+	    }
+	    function decode(str, LIMIT) {
+	        const res = __decode(str, LIMIT);
+	        if (typeof res === 'object')
+	            return res;
+	        throw new Error(res);
+	    }
+	    return {
+	        decodeUnsafe,
+	        decode,
+	        encode,
+	        toWords,
+	        fromWordsUnsafe,
+	        fromWords,
+	    };
+	}
+	dist$1.bech32 = getLibraryFromEncoding('bech32');
+	dist$1.bech32m = getLibraryFromEncoding('bech32m');
+	return dist$1;
+}
+
+requireDist$1();
+
+/**
+ * Asset-transfer wrapper split helper.
+ *
+ * Neurai asset UTXOs have a scriptPubKey of the form
+ *
+ *     <prefix scriptPubKey bytes> OP_XNA_ASSET <pushdata(payload)> OP_DROP
+ *
+ * where `prefix` is the recipient's standard script (typically a P2PKH, an
+ * AuthScript witness v1, or a bare covenant such as the partial-fill sell
+ * order), and `payload` serializes a `CAssetTransfer`:
+ *
+ *     payload = rvn_prefix (0x72 0x76 0x6e) || type_marker (0x74 transfer)
+ *             || VarStr(assetName)
+ *             || int64LE(amountRaw)
+ *             [ || messageRef (optional) || int64LE(expireTime) (optional) ]
+ *
+ * This helper separates the two halves so consumers can validate the prefix
+ * (e.g. feed it to `parsePartialFillScript`) while independently reading the
+ * asset data displayed to the user. The optional payload tail
+ * (`message` + `expireTime`) is tolerated but not exposed — the first
+ * version only needs `assetName` and `amountRaw`.
+ *
+ * Bare (non-wrapped) scriptPubKeys round-trip through this helper by
+ * returning `prefixHex === input` and `assetTransfer === null`.
+ */
+const RVN_MAGIC = Uint8Array.from([0x72, 0x76, 0x6e]); // "rvn"
+const TRANSFER_TYPE = 0x74;
+/**
+ * Walk the script one opcode at a time, skipping pushdata payload bytes,
+ * until either OP_XNA_ASSET is reached at top level or the end of the
+ * script. Returns the byte offset of OP_XNA_ASSET, or -1 if not found.
+ * Throws on truncated pushdata.
+ */
+function findTopLevelAssetOpcode(bytes) {
+    let i = 0;
+    while (i < bytes.length) {
+        const op = bytes[i];
+        if (op === OP_XNA_ASSET$1)
+            return i;
+        // Short direct push: 0x01..0x4b
+        if (op >= 0x01 && op <= 0x4b) {
+            const len = op;
+            const next = i + 1 + len;
+            if (next > bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: short push of ${len} bytes at offset ${i} exceeds script length`);
+            }
+            i = next;
+            continue;
+        }
+        if (op === OP_PUSHDATA1) {
+            if (i + 1 >= bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA1 length at offset ${i}`);
+            }
+            const len = bytes[i + 1];
+            const next = i + 2 + len;
+            if (next > bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA1 of ${len} bytes at offset ${i} exceeds script length`);
+            }
+            i = next;
+            continue;
+        }
+        if (op === OP_PUSHDATA2) {
+            if (i + 2 >= bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA2 length at offset ${i}`);
+            }
+            const len = bytes[i + 1] | (bytes[i + 2] << 8);
+            const next = i + 3 + len;
+            if (next > bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA2 of ${len} bytes at offset ${i} exceeds script length`);
+            }
+            i = next;
+            continue;
+        }
+        if (op === OP_PUSHDATA4) {
+            if (i + 4 >= bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA4 length at offset ${i}`);
+            }
+            const len = (bytes[i + 1] |
+                (bytes[i + 2] << 8) |
+                (bytes[i + 3] << 16) |
+                (bytes[i + 4] << 24)) >>>
+                0;
+            const next = i + 5 + len;
+            if (next > bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA4 of ${len} bytes at offset ${i} exceeds script length`);
+            }
+            i = next;
+            continue;
+        }
+        // Any other opcode (including OP_1..OP_16, OP_DUP, OP_HASH160, etc.) is
+        // one byte wide in Neurai Script. Advance.
+        i += 1;
+    }
+    return -1;
+}
+/**
+ * Read the pushdata element that sits immediately after OP_XNA_ASSET and
+ * return its payload bytes together with the cursor position after the
+ * element. Only direct pushes (1..75) and PUSHDATA1 are accepted — a
+ * well-formed asset transfer payload fits within 75 bytes for the common
+ * case and comfortably within 255 bytes even with long names and tails.
+ * PUSHDATA2 and PUSHDATA4 would signal a malformed or adversarial wrapper.
+ */
+function readPayloadPush(bytes, start) {
+    if (start >= bytes.length) {
+        throw new Error('splitAssetWrappedScriptPubKey: truncated wrapper — missing payload push');
+    }
+    const op = bytes[start];
+    if (op >= 0x01 && op <= 0x4b) {
+        const len = op;
+        const dataStart = start + 1;
+        const dataEnd = dataStart + len;
+        if (dataEnd > bytes.length) {
+            throw new Error(`splitAssetWrappedScriptPubKey: asset payload short push of ${len} bytes exceeds script length`);
+        }
+        return { payload: bytes.slice(dataStart, dataEnd), after: dataEnd };
+    }
+    if (op === OP_PUSHDATA1) {
+        if (start + 1 >= bytes.length) {
+            throw new Error('splitAssetWrappedScriptPubKey: truncated PUSHDATA1 in asset payload');
+        }
+        const len = bytes[start + 1];
+        const dataStart = start + 2;
+        const dataEnd = dataStart + len;
+        if (dataEnd > bytes.length) {
+            throw new Error(`splitAssetWrappedScriptPubKey: asset payload PUSHDATA1 of ${len} bytes exceeds script length`);
+        }
+        return { payload: bytes.slice(dataStart, dataEnd), after: dataEnd };
+    }
+    throw new Error(`splitAssetWrappedScriptPubKey: asset payload push opcode 0x${op.toString(16)} not accepted (expected 0x01..0x4b or PUSHDATA1)`);
+}
+function parseAssetTransferPayload(payload) {
+    if (payload.length < 4 + 1 + 8) {
+        // 4 magic+type, 1 varstr length, 8 int64LE amount
+        throw new Error(`splitAssetWrappedScriptPubKey: asset payload of ${payload.length} bytes is too short`);
+    }
+    for (let i = 0; i < 3; i += 1) {
+        if (payload[i] !== RVN_MAGIC[i]) {
+            throw new Error(`splitAssetWrappedScriptPubKey: asset payload magic mismatch — expected "rvn" got 0x${payload[0].toString(16)} 0x${payload[1].toString(16)} 0x${payload[2].toString(16)}`);
+        }
+    }
+    if (payload[3] !== TRANSFER_TYPE) {
+        throw new Error(`splitAssetWrappedScriptPubKey: asset payload type marker 0x${payload[3].toString(16)} is not a transfer (0x74)`);
+    }
+    const nameLen = payload[4];
+    const nameStart = 5;
+    const nameEnd = nameStart + nameLen;
+    if (nameEnd + 8 > payload.length) {
+        throw new Error(`splitAssetWrappedScriptPubKey: asset payload truncated — name length ${nameLen} does not leave room for amount`);
+    }
+    let assetName = '';
+    for (let i = nameStart; i < nameEnd; i += 1) {
+        assetName += String.fromCharCode(payload[i]);
+    }
+    let amountRaw = 0n;
+    for (let i = 0; i < 8; i += 1) {
+        amountRaw |= BigInt(payload[nameEnd + i]) << BigInt(8 * i);
+    }
+    // Any bytes after nameEnd + 8 form the optional tail (message +
+    // expireTime). We intentionally ignore them in this first version; the
+    // raw payload remains available via `payloadHex` if a consumer later
+    // needs to inspect them.
+    return { assetName, amountRaw };
+}
+/**
+ * Parse an asset-transfer-wrapped scriptPubKey. Accepts both wrapped and
+ * bare forms. Throws on structural malformation (truncated pushdata,
+ * missing OP_DROP after payload, bad magic, unsupported pushdata width).
+ */
+function splitAssetWrappedScriptPubKey(spkHex) {
+    const normalized = ensureHex$1(spkHex, 'scriptPubKey');
+    const bytes = hexToBytes$1(normalized);
+    const assetOpAt = findTopLevelAssetOpcode(bytes);
+    if (assetOpAt < 0) {
+        return { prefixHex: normalized, assetTransfer: null };
+    }
+    const prefix = bytes.slice(0, assetOpAt);
+    const { payload, after } = readPayloadPush(bytes, assetOpAt + 1);
+    if (after >= bytes.length) {
+        throw new Error('splitAssetWrappedScriptPubKey: asset wrapper missing trailing OP_DROP');
+    }
+    if (bytes[after] !== OP_DROP) {
+        throw new Error(`splitAssetWrappedScriptPubKey: expected OP_DROP at offset ${after}, got 0x${bytes[after].toString(16)}`);
+    }
+    if (after + 1 !== bytes.length) {
+        throw new Error(`splitAssetWrappedScriptPubKey: ${bytes.length - after - 1} trailing bytes after OP_DROP`);
+    }
+    const { assetName, amountRaw } = parseAssetTransferPayload(payload);
+    return {
+        prefixHex: bytesToHex$1(prefix),
+        assetTransfer: {
+            assetName,
+            amountRaw,
+            payloadHex: bytesToHex$1(payload),
+        },
+    };
+}
+
+/**
+ * Shared parsing primitives for strict covenant parsers. Each covenant
+ * parser walks the exact byte layout emitted by its builder and fails on
+ * any deviation; the primitives here centralize the cursor arithmetic,
+ * pushdata decoding, and CScriptNum decoding so the legacy and PQ parsers
+ * (and future covenant parsers) cannot drift in rigor.
+ */
+function makeCursor(bytes) {
+    return { bytes, pos: 0 };
+}
+/** Consume one byte and verify it equals `expected`. */
+function expectByte(c, expected, label) {
+    if (c.pos >= c.bytes.length) {
+        throw new Error(`parse: unexpected end of script while reading ${label}`);
+    }
+    const got = c.bytes[c.pos];
+    if (got !== expected) {
+        throw new Error(`parse: expected ${label} = 0x${expected.toString(16)} at offset ${c.pos}, got 0x${got.toString(16)}`);
+    }
+    c.pos += 1;
+}
+/** Fail if the cursor has not consumed every byte of the script. */
+function assertTrailing(c) {
+    if (c.pos !== c.bytes.length) {
+        throw new Error(`parse: ${c.bytes.length - c.pos} trailing bytes after end of script`);
+    }
+}
+/**
+ * Read one pushdata element from the cursor. Supports direct pushes
+ * (1..75 bytes), `OP_PUSHDATA1` and `OP_PUSHDATA2`. `OP_PUSHDATA4` is not
+ * supported by any current covenant script and would overflow the
+ * per-element cap anyway. Truncation is checked for all length fields
+ * and payload ranges.
+ */
+function readPush(c, label) {
+    if (c.pos >= c.bytes.length) {
+        throw new Error(`parse: unexpected end of script while reading push for ${label}`);
+    }
+    const opcode = c.bytes[c.pos];
+    c.pos += 1;
+    // Short direct push: 1..75 bytes
+    if (opcode >= 0x01 && opcode <= 0x4b) {
+        const len = opcode;
+        if (c.pos + len > c.bytes.length) {
+            throw new Error(`parse: short push of ${len} bytes exceeds script length at ${label}`);
+        }
+        const data = c.bytes.slice(c.pos, c.pos + len);
+        c.pos += len;
+        return data;
+    }
+    // OP_PUSHDATA1
+    if (opcode === 0x4c) {
+        if (c.pos >= c.bytes.length) {
+            throw new Error(`parse: truncated PUSHDATA1 length at ${label}`);
+        }
+        const len = c.bytes[c.pos];
+        c.pos += 1;
+        if (c.pos + len > c.bytes.length) {
+            throw new Error(`parse: PUSHDATA1 of ${len} bytes exceeds script length at ${label}`);
+        }
+        const data = c.bytes.slice(c.pos, c.pos + len);
+        c.pos += len;
+        return data;
+    }
+    // OP_PUSHDATA2
+    if (opcode === 0x4d) {
+        if (c.pos + 2 > c.bytes.length) {
+            throw new Error(`parse: truncated PUSHDATA2 length at ${label}`);
+        }
+        const len = c.bytes[c.pos] | (c.bytes[c.pos + 1] << 8);
+        c.pos += 2;
+        if (c.pos + len > c.bytes.length) {
+            throw new Error(`parse: PUSHDATA2 of ${len} bytes exceeds script length at ${label}`);
+        }
+        const data = c.bytes.slice(c.pos, c.pos + len);
+        c.pos += len;
+        return data;
+    }
+    throw new Error(`parse: expected a pushdata opcode at ${label}, got 0x${opcode.toString(16)} at offset ${c.pos - 1}`);
+}
+/**
+ * Decode a `CScriptNum` byte vector (little-endian sign-magnitude, up to
+ * 8 bytes) into a BigInt. Empty vector encodes 0.
+ */
+function decodeScriptNum(data, label) {
+    if (data.length === 0)
+        return 0n;
+    if (data.length > 8) {
+        throw new Error(`parse: CScriptNum at ${label} exceeds 8 bytes`);
+    }
+    let n = 0n;
+    for (let i = 0; i < data.length - 1; i += 1) {
+        n |= BigInt(data[i]) << BigInt(8 * i);
+    }
+    const last = data[data.length - 1];
+    n |= BigInt(last & 0x7f) << BigInt(8 * (data.length - 1));
+    if (last & 0x80) {
+        n = -n;
+    }
+    return n;
+}
+/**
+ * Read a push as a non-negative CScriptNum. Recognises OP_1..OP_16
+ * shorthand. `OP_0` is not accepted because the covenant callers use this
+ * only for values that are strictly positive (prices, selectors, indices).
+ */
+function readPushPositiveInt(c, label) {
+    if (c.pos >= c.bytes.length) {
+        throw new Error(`parse: end of script at ${label}`);
+    }
+    const opcode = c.bytes[c.pos];
+    if (opcode >= OP_1 && opcode <= 0x60) {
+        c.pos += 1;
+        return BigInt(opcode - OP_1 + 1);
+    }
+    const data = readPush(c, label);
+    return decodeScriptNum(data, label);
+}
+/**
+ * Read a 1-byte selector as an UNSIGNED 8-bit integer (0..255). Accepts
+ * two on-wire encodings, because old vs new covenant builders differ:
+ *   - `OP_1..OP_16` shorthand (single opcode) → values 1..16.
+ *   - `0x01 <byte>` raw 1-byte push → any value 1..255.
+ *
+ * Values 0x80..0xff MUST use the raw-push form; the CScriptNum encoding
+ * would need a 0x00 padding byte and become 2 bytes on-stack, which
+ * consensus `OP_TXHASH` rejects. The builder in `script-pq.ts` emits the
+ * raw-push form unconditionally; the parser stays lenient so covenants
+ * built by older tools (using OP_N for small values) still round-trip.
+ */
+function readPushUint8(c, label) {
+    if (c.pos >= c.bytes.length) {
+        throw new Error(`parse: end of script at ${label}`);
+    }
+    const opcode = c.bytes[c.pos];
+    if (opcode >= OP_1 && opcode <= 0x60) {
+        c.pos += 1;
+        return opcode - OP_1 + 1;
+    }
+    const data = readPush(c, label);
+    if (data.length !== 1) {
+        throw new Error(`parse: ${label} must be a single-byte push, got ${data.length} bytes`);
+    }
+    return data[0];
+}
+function modeForSelector(selector) {
+    if (selector === CHAINCONTEXT_HEIGHT)
+        return 'height';
+    if (selector === CHAINCONTEXT_MTP)
+        return 'mtp';
+    throw new Error('expiration OP_CHAINCONTEXT selector must be HEIGHT (0x01) or MTP (0x02)');
+}
+function readOptionalExpirationGate(c, nextOpcodeWithoutGate, label) {
+    if (c.pos >= c.bytes.length || c.bytes[c.pos] === nextOpcodeWithoutGate) {
+        return undefined;
+    }
+    const value = readPushPositiveInt(c, `expiration value (${label})`);
+    if (value <= 0n) {
+        throw new Error(`parse: expiration value (${label}) must be > 0`);
+    }
+    const selector = readPushUint8(c, `expiration selector (${label})`);
+    const mode = modeForSelector(selector);
+    expectByte(c, OP_CHAINCONTEXT, `OP_CHAINCONTEXT (${label})`);
+    expectByte(c, OP_GREATERTHAN, `OP_GREATERTHAN (${label})`);
+    expectByte(c, OP_VERIFY, `OP_VERIFY (${label})`);
+    return { mode, value };
+}
+function assertSameExpiration(a, b, label) {
+    if (a === undefined && b === undefined)
+        return;
+    if (a === undefined || b === undefined || a.mode !== b.mode || a.value !== b.value) {
+        throw new Error(`parse: expiration differs between ${label}`);
+    }
+}
+
+/**
+ * Witness-stack builders for the Partial-Fill Sell Order covenant.
+ *
+ * When the covenant lives behind an AuthScript commitment (the only
+ * asset-compatible deployment since the node's OP_XNA_ASSET placement rules
+ * — bare covenant outputs can no longer carry assets), the unlock data goes
+ * in the witness, not the scriptSig. The scriptSig builders in `spend.ts`
+ * return a serialized script that PUSHES the elements; a witness needs the
+ * elements THEMSELVES, one per stack slot, so those blobs cannot be reused
+ * as a single `args` entry.
+ *
+ * These builders return the raw `args` stack (bottom → top), mirroring the
+ * shapes documented in `spend.ts`:
+ *
+ *   Full fill:     [ <1>, <0> ]
+ *   Partial fill:  [ <N>, <0>, <0> ]
+ *   Cancel:        [ <sig>, <pubkey>, <1> ]
+ *
+ * Numbers are minimal CScriptNum stack values (0 = empty element). Wrap the
+ * result with `buildAuthScriptWitnessNoAuth({ args, witnessScript: covenant })`
+ * (from `standard/authscript.ts`) to get the final `[0x00, ...args, covenant]`
+ * witness, and serialize the spending transaction with
+ * `serializeTransaction` from `@neuraiproject/neurai-create-transaction`
+ * (0.5.1+, witness elements as hex strings: `witness.map(bytesToHex)`).
+ */
+const MAX_PQ_SCRIPT_ELEMENT_SIZE = 3072;
+/**
+ * Witness `args` for the public fill branches. Same semantics and
+ * validations as `buildFillScriptSig`.
+ */
+function buildFillWitnessStack(amount, total) {
+    if (typeof amount !== 'bigint' || typeof total !== 'bigint') {
+        throw new Error('amount and total must be bigint');
+    }
+    if (amount <= 0n) {
+        throw new Error('fill amount must be > 0');
+    }
+    if (total <= 0n) {
+        throw new Error('total must be > 0');
+    }
+    if (amount > total) {
+        throw new Error('fill amount exceeds the covenant total');
+    }
+    if (amount === total) {
+        // Full fill: covenant drains entirely; buyer does not push N.
+        return [encodeScriptNum(1n), encodeScriptNum(0n)];
+    }
+    // Partial fill: N, then both flag values.
+    return [encodeScriptNum(amount), encodeScriptNum(0n), encodeScriptNum(0n)];
+}
+/**
+ * Witness `args` for the seller's ECDSA cancel branch. Same semantics and
+ * validations as `buildCancelScriptSig`.
+ */
+function buildCancelWitnessStack(signatureDer, pubKey) {
+    if (!(signatureDer instanceof Uint8Array) || signatureDer.length === 0) {
+        throw new Error('signatureDer must be a non-empty Uint8Array');
+    }
+    if (!(pubKey instanceof Uint8Array) || (pubKey.length !== 33 && pubKey.length !== 65)) {
+        throw new Error('pubKey must be a compressed (33B) or uncompressed (65B) secp256k1 key');
+    }
+    return [signatureDer, pubKey, encodeScriptNum(1n)];
+}
+/**
+ * Witness `args` for the seller's PQ (ML-DSA-44) cancel branch. Same
+ * semantics and validations as `buildCancelScriptSigPQ`.
+ */
+function buildCancelWitnessStackPQ(sigPQ, pubKey) {
+    if (!(sigPQ instanceof Uint8Array) || sigPQ.length === 0) {
+        throw new Error('sigPQ must be a non-empty Uint8Array');
+    }
+    if (sigPQ.length > MAX_PQ_SCRIPT_ELEMENT_SIZE) {
+        throw new Error(`sigPQ of ${sigPQ.length} bytes exceeds MAX_PQ_SCRIPT_ELEMENT_SIZE (${MAX_PQ_SCRIPT_ELEMENT_SIZE})`);
+    }
+    if (!(pubKey instanceof Uint8Array) || pubKey.length === 0) {
+        throw new Error('pubKey must be a non-empty Uint8Array');
+    }
+    if (pubKey.length > MAX_PQ_SCRIPT_ELEMENT_SIZE) {
+        throw new Error(`pubKey of ${pubKey.length} bytes exceeds MAX_PQ_SCRIPT_ELEMENT_SIZE (${MAX_PQ_SCRIPT_ELEMENT_SIZE})`);
+    }
+    return [sigPQ, pubKey, encodeScriptNum(1n)];
+}
+
+/**
+ * Parser for the Partial-Fill Sell Order covenant (three-branch).
+ *
+ * Extracts `(sellerPubKeyHash, unitPriceSats, tokenId)` from a scriptPubKey
+ * that was produced by `buildPartialFillScript`. Walks the exact byte
+ * layout emitted by the builder and fails on any deviation — this is
+ * deliberate, so a downstream indexer can unambiguously classify a UTXO as
+ * "partial-fill order" or "unknown script" with no false positives.
+ *
+ * The full-fill and partial-fill branches share `(sellerScriptPubKey,
+ * unitPriceSats, tokenId)`. The parser reads both branches and verifies
+ * consistency; inconsistency throws.
+ */
+/**
+ * Parse a covenant scriptPubKey and extract its parameters. Throws with a
+ * descriptive message if the bytes don't match the partial-fill template.
+ */
+function parsePartialFillScript(script, network = 'xna-test') {
+    const bytes = typeof script === 'string' ? hexToBytes$1(script) : script;
+    const c = makeCursor(bytes);
+    // ═════ Outer IF — Cancel branch ═════
+    expectByte(c, OP_IF, 'OP_IF (outer cancel)');
+    expectByte(c, OP_DUP, 'OP_DUP (cancel)');
+    expectByte(c, OP_HASH160, 'OP_HASH160');
+    const sellerPubKeyHash = readPush(c, 'sellerPubKeyHash');
+    if (sellerPubKeyHash.length !== 20) {
+        throw new Error(`parse: sellerPubKeyHash is ${sellerPubKeyHash.length} bytes, expected 20`);
+    }
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (cancel)');
+    expectByte(c, OP_CHECKSIG, 'OP_CHECKSIG (cancel)');
+    expectByte(c, OP_ELSE, 'OP_ELSE (outer → fill)');
+    // ═════ Inner IF — Full-fill branch ═════
+    expectByte(c, OP_IF, 'OP_IF (inner full-fill)');
+    const expirationFull = readOptionalExpirationGate(c, OP_0, 'full');
+    // N = inputAmount
+    expectByte(c, OP_0, 'OP_0 (input idx, full)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, full)');
+    expectByte(c, OP_INPUTASSETFIELD, 'OP_INPUTASSETFIELD (full)');
+    // payment value check
+    expectByte(c, OP_DUP, 'OP_DUP (price, full)');
+    const unitPriceSatsFull = readPushPositiveInt(c, 'unitPriceSats (full)');
+    expectByte(c, OP_MUL, 'OP_MUL (full)');
+    expectByte(c, OP_0, 'OP_0 (payment idx, full)');
+    expectByte(c, OP_OUTPUTVALUE, 'OP_OUTPUTVALUE (full)');
+    expectByte(c, OP_SWAP, 'OP_SWAP (full)');
+    expectByte(c, OP_GREATERTHANOREQUAL, 'OP_GREATERTHANOREQUAL (full)');
+    expectByte(c, OP_VERIFY, 'OP_VERIFY (payment full)');
+    // payment spk
+    expectByte(c, OP_0, 'OP_0 (spk idx, full)');
+    expectByte(c, OP_OUTPUTSCRIPT, 'OP_OUTPUTSCRIPT (payment full)');
+    const sellerSpkFull = readPush(c, 'sellerScriptPubKey (full)');
+    const expectedSpk = new Uint8Array([
+        OP_DUP, OP_HASH160, 0x14, ...sellerPubKeyHash, OP_EQUALVERIFY, OP_CHECKSIG
+    ]);
+    if (!bytesEqual(sellerSpkFull, expectedSpk)) {
+        throw new Error('parse: full-fill seller scriptPubKey does not match the cancel PKH');
+    }
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment spk full)');
+    // buyer amount == N (full)
+    expectByte(c, OP_DUP, 'OP_DUP (buyer amount, full)');
+    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, full)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, full)');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, full)');
+    // buyer name == tokenId (full)
+    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
+    expectByte(c, OP_1, 'OP_1 (NAME sel, full)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, full)');
+    const tokenIdFull = readPush(c, 'tokenId (full)');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, full)');
+    // tail (full)
+    expectByte(c, OP_DROP, 'OP_DROP (full)');
+    expectByte(c, OP_1, 'OP_1 (true, full)');
+    expectByte(c, OP_ELSE, 'OP_ELSE (inner → partial fill)');
+    // ═════ Inner ELSE — Partial-fill branch ═════
+    const expirationPartial = readOptionalExpirationGate(c, OP_DUP, 'partial');
+    // Payment value
+    expectByte(c, OP_DUP, 'OP_DUP (price, partial)');
+    const unitPriceSatsPartial = readPushPositiveInt(c, 'unitPriceSats (partial)');
+    expectByte(c, OP_MUL, 'OP_MUL (partial)');
+    expectByte(c, OP_0, 'OP_0 (pay idx, partial)');
+    expectByte(c, OP_OUTPUTVALUE, 'OP_OUTPUTVALUE (partial)');
+    expectByte(c, OP_SWAP, 'OP_SWAP (partial)');
+    expectByte(c, OP_GREATERTHANOREQUAL, 'OP_GREATERTHANOREQUAL (partial)');
+    expectByte(c, OP_VERIFY, 'OP_VERIFY (payment partial)');
+    // Payment spk
+    expectByte(c, OP_0, 'OP_0 (spk idx, partial)');
+    expectByte(c, OP_OUTPUTSCRIPT, 'OP_OUTPUTSCRIPT (payment partial)');
+    const sellerSpkPartial = readPush(c, 'sellerScriptPubKey (partial)');
+    if (!bytesEqual(sellerSpkPartial, expectedSpk)) {
+        throw new Error('parse: partial-fill seller scriptPubKey does not match the cancel PKH');
+    }
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment spk partial)');
+    // Buyer amount
+    expectByte(c, OP_DUP, 'OP_DUP (buyer amount, partial)');
+    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, partial)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, partial)');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, partial)');
+    // Buyer name
+    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
+    expectByte(c, OP_1, 'OP_1 (NAME sel, partial)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, partial)');
+    const tokenIdPartial1 = readPush(c, 'tokenId partial #1');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, partial)');
+    // Continuation commitment
+    expectByte(c, OP_2, 'OP_2 (remainder idx)');
+    expectByte(c, OP_OUTPUTAUTHCOMMITMENT, 'OP_OUTPUTAUTHCOMMITMENT (remainder)');
+    expectByte(c, OP_2, 'OP_2 (TXFIELD sel: AUTHSCRIPT_COMMITMENT)');
+    expectByte(c, OP_TXFIELD, 'OP_TXFIELD');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder auth)');
+    // Continuation name
+    expectByte(c, OP_2, 'OP_2 (remainder idx)');
+    expectByte(c, OP_1, 'OP_1 (NAME sel)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder name)');
+    const tokenIdPartial2 = readPush(c, 'tokenId partial #2');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder name)');
+    // Continuation amount
+    expectByte(c, OP_2, 'OP_2 (remainder idx)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT sel)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder amount)');
+    expectByte(c, OP_OVER, 'OP_OVER');
+    expectByte(c, OP_0, 'OP_0 (input idx)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT sel)');
+    expectByte(c, OP_INPUTASSETFIELD, 'OP_INPUTASSETFIELD');
+    expectByte(c, OP_SWAP, 'OP_SWAP');
+    expectByte(c, OP_SUB, 'OP_SUB');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder amount)');
+    // Tail (partial)
+    expectByte(c, OP_DROP, 'OP_DROP (partial)');
+    expectByte(c, OP_1, 'OP_1 (true, partial)');
+    // Close the nested structure
+    expectByte(c, OP_ENDIF, 'OP_ENDIF (inner)');
+    expectByte(c, OP_ENDIF, 'OP_ENDIF (outer)');
+    assertTrailing(c);
+    // Cross-branch consistency: all three (full token, partial name #1,
+    // partial name #2) must agree, and the two unit prices must match.
+    if (!bytesEqual(tokenIdFull, tokenIdPartial1)) {
+        throw new Error('parse: tokenId differs between full-fill and partial-fill branches');
+    }
+    if (!bytesEqual(tokenIdPartial1, tokenIdPartial2)) {
+        throw new Error('parse: tokenId bytes differ between buyer and remainder partial checks');
+    }
+    if (unitPriceSatsFull !== unitPriceSatsPartial) {
+        throw new Error('parse: unitPriceSats differs between full-fill and partial-fill branches');
+    }
+    assertSameExpiration(expirationFull, expirationPartial, 'full-fill and partial-fill branches');
+    const tokenId = new TextDecoder('utf-8', { fatal: true }).decode(tokenIdFull);
+    return {
+        network,
+        sellerPubKeyHash,
+        unitPriceSats: unitPriceSatsFull,
+        tokenId,
+        expiration: expirationFull,
+        scriptHex: bytesToHex$1(bytes)
+    };
+}
+/**
+ * Parse a PQ partial-fill covenant. Throws if the bytes do not match the
+ * exact layout produced by `buildPartialFillScriptPQ`.
+ */
+function parsePartialFillScriptPQ(script, network = 'xna-test') {
+    const bytes = typeof script === 'string' ? hexToBytes$1(script) : script;
+    const c = makeCursor(bytes);
+    // ═════ Outer IF — Cancel branch (PQ) ═════
+    expectByte(c, OP_IF, 'OP_IF (outer cancel)');
+    expectByte(c, OP_DUP, 'OP_DUP (cancel)');
+    expectByte(c, OP_SHA256, 'OP_SHA256');
+    const pubKeyCommitment = readPush(c, 'pubKeyCommitment');
+    if (pubKeyCommitment.length !== 32) {
+        throw new Error(`parse-pq: pubKeyCommitment must be 32 bytes, got ${pubKeyCommitment.length}`);
+    }
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (cancel)');
+    const txHashSelector = readPushUint8(c, 'txHashSelector');
+    if (txHashSelector < 1) {
+        throw new Error(`parse-pq: txHashSelector 0x00 is rejected by OP_TXHASH`);
+    }
+    expectByte(c, OP_TXHASH, 'OP_TXHASH');
+    expectByte(c, OP_SWAP, 'OP_SWAP');
+    expectByte(c, OP_CHECKSIGFROMSTACK, 'OP_CHECKSIGFROMSTACK');
+    expectByte(c, OP_ELSE, 'OP_ELSE (outer → fill)');
+    // ═════ Inner IF — Full-fill branch ═════
+    expectByte(c, OP_IF, 'OP_IF (inner full-fill)');
+    const expirationFull = readOptionalExpirationGate(c, OP_0, 'full');
+    expectByte(c, OP_0, 'OP_0 (input idx, full)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, full)');
+    expectByte(c, OP_INPUTASSETFIELD, 'OP_INPUTASSETFIELD (full)');
+    expectByte(c, OP_DUP, 'OP_DUP (price, full)');
+    const unitPriceSatsFull = readPushPositiveInt(c, 'unitPriceSats (full)');
+    expectByte(c, OP_MUL, 'OP_MUL (full)');
+    expectByte(c, OP_0, 'OP_0 (payment idx, full)');
+    expectByte(c, OP_OUTPUTVALUE, 'OP_OUTPUTVALUE (full)');
+    expectByte(c, OP_SWAP, 'OP_SWAP (full)');
+    expectByte(c, OP_GREATERTHANOREQUAL, 'OP_GE (full)');
+    expectByte(c, OP_VERIFY, 'OP_VERIFY (full)');
+    expectByte(c, OP_0, 'OP_0 (payment spk idx, full)');
+    expectByte(c, OP_OUTPUTSCRIPT, 'OP_OUTPUTSCRIPT (payment full)');
+    const paymentScriptPubKeyFull = readPush(c, 'paymentScriptPubKey (full)');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment full)');
+    expectByte(c, OP_DUP, 'OP_DUP (buyer amount, full)');
+    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, full)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, full)');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, full)');
+    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
+    expectByte(c, OP_1, 'OP_1 (NAME sel, full)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, full)');
+    const tokenIdFull = readPush(c, 'tokenId (full)');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, full)');
+    expectByte(c, OP_DROP, 'OP_DROP (full)');
+    expectByte(c, OP_1, 'OP_1 (true, full)');
+    expectByte(c, OP_ELSE, 'OP_ELSE (inner → partial fill)');
+    // ═════ Inner ELSE — Partial-fill branch ═════
+    const expirationPartial = readOptionalExpirationGate(c, OP_DUP, 'partial');
+    expectByte(c, OP_DUP, 'OP_DUP (price, partial)');
+    const unitPriceSatsPartial = readPushPositiveInt(c, 'unitPriceSats (partial)');
+    expectByte(c, OP_MUL, 'OP_MUL (partial)');
+    expectByte(c, OP_0, 'OP_0 (payment idx, partial)');
+    expectByte(c, OP_OUTPUTVALUE, 'OP_OUTPUTVALUE (partial)');
+    expectByte(c, OP_SWAP, 'OP_SWAP (partial)');
+    expectByte(c, OP_GREATERTHANOREQUAL, 'OP_GE (partial)');
+    expectByte(c, OP_VERIFY, 'OP_VERIFY (partial)');
+    expectByte(c, OP_0, 'OP_0 (payment spk idx, partial)');
+    expectByte(c, OP_OUTPUTSCRIPT, 'OP_OUTPUTSCRIPT (payment partial)');
+    const paymentScriptPubKeyPartial = readPush(c, 'paymentScriptPubKey (partial)');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment partial)');
+    expectByte(c, OP_DUP, 'OP_DUP (buyer amount, partial)');
+    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, partial)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, partial)');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, partial)');
+    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
+    expectByte(c, OP_1, 'OP_1 (NAME sel, partial)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, partial)');
+    const tokenIdPartial1 = readPush(c, 'tokenId partial #1');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, partial)');
+    // Continuation commitment
+    expectByte(c, OP_2, 'OP_2 (remainder idx)');
+    expectByte(c, OP_OUTPUTAUTHCOMMITMENT, 'OP_OUTPUTAUTHCOMMITMENT (remainder)');
+    expectByte(c, OP_2, 'OP_2 (TXFIELD sel: AUTHSCRIPT_COMMITMENT)');
+    expectByte(c, OP_TXFIELD, 'OP_TXFIELD');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder auth)');
+    expectByte(c, OP_2, 'OP_2 (remainder idx)');
+    expectByte(c, OP_1, 'OP_1 (NAME sel)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder name)');
+    const tokenIdPartial2 = readPush(c, 'tokenId partial #2');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder name)');
+    expectByte(c, OP_2, 'OP_2 (remainder idx)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT sel)');
+    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder amount)');
+    expectByte(c, OP_OVER, 'OP_OVER');
+    expectByte(c, OP_0, 'OP_0 (input idx)');
+    expectByte(c, OP_2, 'OP_2 (AMOUNT sel)');
+    expectByte(c, OP_INPUTASSETFIELD, 'OP_INPUTASSETFIELD');
+    expectByte(c, OP_SWAP, 'OP_SWAP');
+    expectByte(c, OP_SUB, 'OP_SUB');
+    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder amount)');
+    expectByte(c, OP_DROP, 'OP_DROP (partial)');
+    expectByte(c, OP_1, 'OP_1 (true, partial)');
+    expectByte(c, OP_ENDIF, 'OP_ENDIF (inner)');
+    expectByte(c, OP_ENDIF, 'OP_ENDIF (outer)');
+    assertTrailing(c);
+    // Cross-branch consistency.
+    if (!bytesEqual(paymentScriptPubKeyFull, paymentScriptPubKeyPartial)) {
+        throw new Error('parse-pq: paymentScriptPubKey differs between full-fill and partial-fill branches');
+    }
+    if (!bytesEqual(tokenIdFull, tokenIdPartial1)) {
+        throw new Error('parse-pq: tokenId differs between full-fill and partial-fill branches');
+    }
+    if (!bytesEqual(tokenIdPartial1, tokenIdPartial2)) {
+        throw new Error('parse-pq: tokenId differs between buyer and remainder partial checks');
+    }
+    if (unitPriceSatsFull !== unitPriceSatsPartial) {
+        throw new Error('parse-pq: unitPriceSats differs between full-fill and partial-fill branches');
+    }
+    assertSameExpiration(expirationFull, expirationPartial, 'full-fill and partial-fill branches');
+    const tokenId = new TextDecoder('utf-8', { fatal: true }).decode(tokenIdFull);
+    return {
+        network,
+        pubKeyCommitment,
+        tokenId,
+        unitPriceSats: unitPriceSatsFull,
+        txHashSelector,
+        expiration: expirationFull,
+        paymentScriptPubKey: paymentScriptPubKeyFull,
+        scriptHex: bytesToHex$1(bytes)
+    };
+}
+
+function ensureHex(hex, label = 'hex') {
+    const normalized = String(hex || '').trim().toLowerCase();
+    if (!/^[0-9a-f]*$/.test(normalized) || normalized.length % 2 !== 0) {
+        throw new Error(`Invalid ${label}: expected even-length hex string`);
+    }
+    return normalized;
+}
+function hexToBytes(hex) {
+    const normalized = ensureHex(hex);
+    const bytes = new Uint8Array(normalized.length / 2);
+    for (let i = 0; i < normalized.length; i += 2) {
+        bytes[i / 2] = Number.parseInt(normalized.slice(i, i + 2), 16);
+    }
+    return bytes;
+}
+function bytesToHex(bytes) {
+    return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+}
+function concatBytes(...parts) {
+    const total = parts.reduce((sum, part) => sum + part.length, 0);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const part of parts) {
+        out.set(part, offset);
+        offset += part.length;
+    }
+    return out;
+}
+function reverseBytes(bytes) {
+    return Uint8Array.from(Array.from(bytes).reverse());
+}
+function u32LE(value) {
+    if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) {
+        throw new Error(`uint32 out of range: ${value}`);
+    }
+    const out = new Uint8Array(4);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, value, true);
+    return out;
+}
+function u64LE(value) {
+    const bigintValue = typeof value === 'bigint' ? value : BigInt(value);
+    if (bigintValue < 0n || bigintValue > 0xffffffffffffffffn) {
+        throw new Error(`uint64 out of range: ${bigintValue}`);
+    }
+    const out = new Uint8Array(8);
+    let remaining = bigintValue;
+    for (let i = 0; i < 8; i += 1) {
+        out[i] = Number(remaining & 0xffn);
+        remaining >>= 8n;
+    }
+    return out;
+}
+function compactSize(value) {
+    const bigintValue = typeof value === 'bigint' ? value : BigInt(value);
+    if (bigintValue < 0n)
+        throw new Error('CompactSize cannot encode negative numbers');
+    if (bigintValue < 253n) {
+        return Uint8Array.of(Number(bigintValue));
+    }
+    if (bigintValue <= 0xffffn) {
+        return concatBytes(Uint8Array.of(0xfd), u16LE(Number(bigintValue)));
+    }
+    if (bigintValue <= 0xffffffffn) {
+        return concatBytes(Uint8Array.of(0xfe), u32LE(Number(bigintValue)));
+    }
+    return concatBytes(Uint8Array.of(0xff), u64LE(bigintValue));
+}
+function u16LE(value) {
+    if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
+        throw new Error(`uint16 out of range: ${value}`);
+    }
+    const out = new Uint8Array(2);
+    const view = new DataView(out.buffer);
+    view.setUint16(0, value, true);
+    return out;
 }
 
 // base-x encoding / decoding
@@ -21432,747 +22563,239 @@ function requireDist () {
 
 requireDist();
 
-/**
- * Asset-transfer wrapper split helper.
- *
- * Neurai asset UTXOs have a scriptPubKey of the form
- *
- *     <prefix scriptPubKey bytes> OP_XNA_ASSET <pushdata(payload)> OP_DROP
- *
- * where `prefix` is the recipient's standard script (typically a P2PKH, an
- * AuthScript witness v1, or a bare covenant such as the partial-fill sell
- * order), and `payload` serializes a `CAssetTransfer`:
- *
- *     payload = rvn_prefix (0x72 0x76 0x6e) || type_marker (0x74 transfer)
- *             || VarStr(assetName)
- *             || int64LE(amountRaw)
- *             [ || messageRef (optional) || int64LE(expireTime) (optional) ]
- *
- * This helper separates the two halves so consumers can validate the prefix
- * (e.g. feed it to `parsePartialFillScript`) while independently reading the
- * asset data displayed to the user. The optional payload tail
- * (`message` + `expireTime`) is tolerated but not exposed — the first
- * version only needs `assetName` and `amountRaw`.
- *
- * Bare (non-wrapped) scriptPubKeys round-trip through this helper by
- * returning `prefixHex === input` and `assetTransfer === null`.
- */
-const RVN_MAGIC = Uint8Array.from([0x72, 0x76, 0x6e]); // "rvn"
-const TRANSFER_TYPE = 0x74;
-/**
- * Walk the script one opcode at a time, skipping pushdata payload bytes,
- * until either OP_XNA_ASSET is reached at top level or the end of the
- * script. Returns the byte offset of OP_XNA_ASSET, or -1 if not found.
- * Throws on truncated pushdata.
- */
-function findTopLevelAssetOpcode(bytes) {
-    let i = 0;
-    while (i < bytes.length) {
-        const op = bytes[i];
-        if (op === OP_XNA_ASSET$1)
-            return i;
-        // Short direct push: 0x01..0x4b
-        if (op >= 0x01 && op <= 0x4b) {
-            const len = op;
-            const next = i + 1 + len;
-            if (next > bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: short push of ${len} bytes at offset ${i} exceeds script length`);
+// Hard deserialization bound, mirroring the node (serialize.h MAX_SIZE):
+// ReadCompactSize rejects anything above it, canonical or not.
+const MAX_SIZE = 0x02000000;
+class ByteReader {
+    bytes;
+    offset = 0;
+    constructor(bytes) {
+        this.bytes = bytes;
+    }
+    need(count) {
+        if (count > this.bytes.length - this.offset) {
+            throw new Error(`Transaction hex truncated: need ${count} more byte(s) at offset ${this.offset}, ` +
+                `${this.bytes.length - this.offset} remaining`);
+        }
+    }
+    readBytes(count) {
+        this.need(count);
+        const slice = this.bytes.subarray(this.offset, this.offset + count);
+        this.offset += count;
+        return slice;
+    }
+    readU8() {
+        return this.readBytes(1)[0];
+    }
+    readU32() {
+        const slice = this.readBytes(4);
+        return (slice[0] | (slice[1] << 8) | (slice[2] << 16) | (slice[3] << 24)) >>> 0;
+    }
+    readU64() {
+        const slice = this.readBytes(8);
+        let value = 0n;
+        for (let i = 7; i >= 0; i -= 1) {
+            value = (value << 8n) | BigInt(slice[i]);
+        }
+        return value;
+    }
+    // Canonical CompactSize with the node's range bound: the shortest encoding
+    // is mandatory and anything above MAX_SIZE throws, exactly like
+    // ReadCompactSize. Lengths are validated against the remaining bytes by the
+    // callers BEFORE any allocation or iteration.
+    readCompactSize() {
+        const first = this.readU8();
+        let value;
+        if (first < 0xfd) {
+            value = first;
+        }
+        else if (first === 0xfd) {
+            const slice = this.readBytes(2);
+            value = slice[0] | (slice[1] << 8);
+            if (value < 0xfd)
+                throw new Error('Non-canonical CompactSize (0xfd form for value < 253)');
+        }
+        else if (first === 0xfe) {
+            value = this.readU32();
+            if (value < 0x10000)
+                throw new Error('Non-canonical CompactSize (0xfe form for value < 0x10000)');
+        }
+        else {
+            const big = this.readU64();
+            if (big < 0x100000000n)
+                throw new Error('Non-canonical CompactSize (0xff form for value < 2^32)');
+            if (big > BigInt(MAX_SIZE))
+                throw new Error(`CompactSize exceeds MAX_SIZE: ${big}`);
+            value = Number(big);
+        }
+        if (value > MAX_SIZE) {
+            throw new Error(`CompactSize exceeds MAX_SIZE: ${value}`);
+        }
+        return value;
+    }
+    /** Read a length prefix that must fit in the remaining bytes at `bytesPerItem`. */
+    readCount(bytesPerItem, label) {
+        const count = this.readCompactSize();
+        if (count * bytesPerItem > this.bytes.length - this.offset) {
+            throw new Error(`Declared ${label} count ${count} does not fit in the remaining ` +
+                `${this.bytes.length - this.offset} byte(s)`);
+        }
+        return count;
+    }
+    get finished() {
+        return this.offset === this.bytes.length;
+    }
+    get position() {
+        return this.offset;
+    }
+}
+function readOutpoint(reader) {
+    const txid = bytesToHex(reverseBytes(reader.readBytes(32)));
+    const vout = reader.readU32();
+    return { txid, vout };
+}
+function readInput(reader) {
+    const { txid, vout } = readOutpoint(reader);
+    const scriptLength = reader.readCount(1, 'scriptSig');
+    const scriptSigHex = bytesToHex(reader.readBytes(scriptLength));
+    const sequence = reader.readU32();
+    return { txid, vout, scriptSigHex, sequence };
+}
+function readOutput(reader) {
+    const valueSats = reader.readU64();
+    const scriptLength = reader.readCount(1, 'scriptPubKey');
+    const scriptPubKeyHex = bytesToHex(reader.readBytes(scriptLength));
+    return { valueSats, scriptPubKeyHex };
+}
+// Minimum serialized size per item, used only to bound counts before reading:
+// input = outpoint(36) + compactSize(1) + sequence(4); output = value(8) +
+// compactSize(1); witness element = compactSize(1).
+const MIN_INPUT_SIZE = 41;
+const MIN_OUTPUT_SIZE = 9;
+function parseTransaction(hex) {
+    const reader = new ByteReader(hexToBytes(ensureHex(hex, 'transaction hex')));
+    // nVersion is a signed int32 (negative versions exist on-chain historically).
+    const version = reader.readU32() | 0;
+    const inputs = [];
+    const outputs = [];
+    let flags = 0;
+    const vinCount = reader.readCount(MIN_INPUT_SIZE, 'input');
+    if (vinCount === 0) {
+        // Either a dummy marker for the extended (witness) format, or a genuinely
+        // empty vin. Mirrors UnserializeTransaction: a flags byte follows; when it
+        // is non-zero the real vin/vout follow, when zero the vout is NOT read.
+        flags = reader.readU8();
+        if (flags !== 0) {
+            const realVinCount = reader.readCount(MIN_INPUT_SIZE, 'input');
+            for (let i = 0; i < realVinCount; i += 1)
+                inputs.push(readInput(reader));
+            const voutCount = reader.readCount(MIN_OUTPUT_SIZE, 'output');
+            for (let i = 0; i < voutCount; i += 1)
+                outputs.push(readOutput(reader));
+        }
+    }
+    else {
+        for (let i = 0; i < vinCount; i += 1)
+            inputs.push(readInput(reader));
+        const voutCount = reader.readCount(MIN_OUTPUT_SIZE, 'output');
+        for (let i = 0; i < voutCount; i += 1)
+            outputs.push(readOutput(reader));
+    }
+    // NIP-014: vrefin sits between vout and witness, v3 only (even when empty).
+    const vrefin = [];
+    if (version === 3) {
+        const refCount = reader.readCount(36, 'refinput');
+        for (let i = 0; i < refCount; i += 1)
+            vrefin.push(readOutpoint(reader));
+    }
+    if (flags & 1) {
+        flags ^= 1;
+        for (const input of inputs) {
+            const stackSize = reader.readCount(1, 'witness element');
+            const stack = [];
+            for (let i = 0; i < stackSize; i += 1) {
+                const elementLength = reader.readCount(1, 'witness bytes');
+                stack.push(bytesToHex(reader.readBytes(elementLength)));
             }
-            i = next;
-            continue;
+            input.witness = stack;
         }
-        if (op === OP_PUSHDATA1) {
-            if (i + 1 >= bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA1 length at offset ${i}`);
+    }
+    if (flags) {
+        throw new Error(`Unknown transaction optional data (flags 0x${flags.toString(16)})`);
+    }
+    const locktime = reader.readU32();
+    if (!reader.finished) {
+        throw new Error(`Trailing bytes after transaction (offset ${reader.position})`);
+    }
+    return { version, inputs, outputs, vrefin, locktime };
+}
+function serializeOutpoint$1(ref) {
+    const txid = hexToBytes(ensureHex(ref.txid, 'txid'));
+    if (txid.length !== 32) {
+        throw new Error(`Invalid txid: expected 32 bytes, got ${txid.length}`);
+    }
+    return concatBytes(reverseBytes(txid), u32LE(ref.vout));
+}
+function serializeCodecInput(input) {
+    const scriptSig = hexToBytes(ensureHex(input.scriptSigHex ?? '', 'scriptSigHex'));
+    return concatBytes(serializeOutpoint$1(input), compactSize(scriptSig.length), scriptSig, u32LE(input.sequence ?? 0xffffffff));
+}
+function serializeCodecOutput(output) {
+    const script = hexToBytes(ensureHex(output.scriptPubKeyHex, 'scriptPubKeyHex'));
+    return concatBytes(u64LE(output.valueSats), compactSize(script.length), script);
+}
+function inputHasWitness(input) {
+    return (input.witness?.length ?? 0) > 0;
+}
+function serializeTransaction(tx, options = {}) {
+    if (!Number.isInteger(tx.version) || tx.version < -2147483648 || tx.version > 0x7fffffff) {
+        throw new Error(`Transaction version out of int32 range: ${tx.version}`);
+    }
+    const vrefin = tx.vrefin ?? [];
+    if (tx.version !== 3 && vrefin.length > 0) {
+        throw new Error(`vrefin requires transaction version 3 (got version ${tx.version})`);
+    }
+    const withWitness = (options.includeWitness ?? true) && tx.inputs.some(inputHasWitness);
+    const parts = [u32LE(tx.version >>> 0)];
+    if (withWitness) {
+        // Extended format: dummy empty vin + flags byte.
+        parts.push(Uint8Array.of(0x00, 0x01));
+    }
+    parts.push(compactSize(tx.inputs.length));
+    for (const input of tx.inputs)
+        parts.push(serializeCodecInput(input));
+    parts.push(compactSize(tx.outputs.length));
+    for (const output of tx.outputs)
+        parts.push(serializeCodecOutput(output));
+    if (tx.version === 3) {
+        parts.push(compactSize(vrefin.length));
+        for (const ref of vrefin)
+            parts.push(serializeOutpoint$1(ref));
+    }
+    if (withWitness) {
+        // One stack per input, empty (CompactSize 0) where the input has none.
+        for (const input of tx.inputs) {
+            const stack = input.witness ?? [];
+            parts.push(compactSize(stack.length));
+            for (const element of stack) {
+                const bytes = hexToBytes(ensureHex(element, 'witness element'));
+                parts.push(compactSize(bytes.length), bytes);
             }
-            const len = bytes[i + 1];
-            const next = i + 2 + len;
-            if (next > bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA1 of ${len} bytes at offset ${i} exceeds script length`);
-            }
-            i = next;
-            continue;
-        }
-        if (op === OP_PUSHDATA2) {
-            if (i + 2 >= bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA2 length at offset ${i}`);
-            }
-            const len = bytes[i + 1] | (bytes[i + 2] << 8);
-            const next = i + 3 + len;
-            if (next > bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA2 of ${len} bytes at offset ${i} exceeds script length`);
-            }
-            i = next;
-            continue;
-        }
-        if (op === OP_PUSHDATA4) {
-            if (i + 4 >= bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA4 length at offset ${i}`);
-            }
-            const len = (bytes[i + 1] |
-                (bytes[i + 2] << 8) |
-                (bytes[i + 3] << 16) |
-                (bytes[i + 4] << 24)) >>>
-                0;
-            const next = i + 5 + len;
-            if (next > bytes.length) {
-                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA4 of ${len} bytes at offset ${i} exceeds script length`);
-            }
-            i = next;
-            continue;
-        }
-        // Any other opcode (including OP_1..OP_16, OP_DUP, OP_HASH160, etc.) is
-        // one byte wide in Neurai Script. Advance.
-        i += 1;
-    }
-    return -1;
-}
-/**
- * Read the pushdata element that sits immediately after OP_XNA_ASSET and
- * return its payload bytes together with the cursor position after the
- * element. Only direct pushes (1..75) and PUSHDATA1 are accepted — a
- * well-formed asset transfer payload fits within 75 bytes for the common
- * case and comfortably within 255 bytes even with long names and tails.
- * PUSHDATA2 and PUSHDATA4 would signal a malformed or adversarial wrapper.
- */
-function readPayloadPush(bytes, start) {
-    if (start >= bytes.length) {
-        throw new Error('splitAssetWrappedScriptPubKey: truncated wrapper — missing payload push');
-    }
-    const op = bytes[start];
-    if (op >= 0x01 && op <= 0x4b) {
-        const len = op;
-        const dataStart = start + 1;
-        const dataEnd = dataStart + len;
-        if (dataEnd > bytes.length) {
-            throw new Error(`splitAssetWrappedScriptPubKey: asset payload short push of ${len} bytes exceeds script length`);
-        }
-        return { payload: bytes.slice(dataStart, dataEnd), after: dataEnd };
-    }
-    if (op === OP_PUSHDATA1) {
-        if (start + 1 >= bytes.length) {
-            throw new Error('splitAssetWrappedScriptPubKey: truncated PUSHDATA1 in asset payload');
-        }
-        const len = bytes[start + 1];
-        const dataStart = start + 2;
-        const dataEnd = dataStart + len;
-        if (dataEnd > bytes.length) {
-            throw new Error(`splitAssetWrappedScriptPubKey: asset payload PUSHDATA1 of ${len} bytes exceeds script length`);
-        }
-        return { payload: bytes.slice(dataStart, dataEnd), after: dataEnd };
-    }
-    throw new Error(`splitAssetWrappedScriptPubKey: asset payload push opcode 0x${op.toString(16)} not accepted (expected 0x01..0x4b or PUSHDATA1)`);
-}
-function parseAssetTransferPayload(payload) {
-    if (payload.length < 4 + 1 + 8) {
-        // 4 magic+type, 1 varstr length, 8 int64LE amount
-        throw new Error(`splitAssetWrappedScriptPubKey: asset payload of ${payload.length} bytes is too short`);
-    }
-    for (let i = 0; i < 3; i += 1) {
-        if (payload[i] !== RVN_MAGIC[i]) {
-            throw new Error(`splitAssetWrappedScriptPubKey: asset payload magic mismatch — expected "rvn" got 0x${payload[0].toString(16)} 0x${payload[1].toString(16)} 0x${payload[2].toString(16)}`);
         }
     }
-    if (payload[3] !== TRANSFER_TYPE) {
-        throw new Error(`splitAssetWrappedScriptPubKey: asset payload type marker 0x${payload[3].toString(16)} is not a transfer (0x74)`);
-    }
-    const nameLen = payload[4];
-    const nameStart = 5;
-    const nameEnd = nameStart + nameLen;
-    if (nameEnd + 8 > payload.length) {
-        throw new Error(`splitAssetWrappedScriptPubKey: asset payload truncated — name length ${nameLen} does not leave room for amount`);
-    }
-    let assetName = '';
-    for (let i = nameStart; i < nameEnd; i += 1) {
-        assetName += String.fromCharCode(payload[i]);
-    }
-    let amountRaw = 0n;
-    for (let i = 0; i < 8; i += 1) {
-        amountRaw |= BigInt(payload[nameEnd + i]) << BigInt(8 * i);
-    }
-    // Any bytes after nameEnd + 8 form the optional tail (message +
-    // expireTime). We intentionally ignore them in this first version; the
-    // raw payload remains available via `payloadHex` if a consumer later
-    // needs to inspect them.
-    return { assetName, amountRaw };
+    parts.push(u32LE(tx.locktime));
+    return bytesToHex(concatBytes(...parts));
 }
-/**
- * Parse an asset-transfer-wrapped scriptPubKey. Accepts both wrapped and
- * bare forms. Throws on structural malformation (truncated pushdata,
- * missing OP_DROP after payload, bad magic, unsupported pushdata width).
- */
-function splitAssetWrappedScriptPubKey(spkHex) {
-    const normalized = ensureHex(spkHex, 'scriptPubKey');
-    const bytes = hexToBytes(normalized);
-    const assetOpAt = findTopLevelAssetOpcode(bytes);
-    if (assetOpAt < 0) {
-        return { prefixHex: normalized, assetTransfer: null };
-    }
-    const prefix = bytes.slice(0, assetOpAt);
-    const { payload, after } = readPayloadPush(bytes, assetOpAt + 1);
-    if (after >= bytes.length) {
-        throw new Error('splitAssetWrappedScriptPubKey: asset wrapper missing trailing OP_DROP');
-    }
-    if (bytes[after] !== OP_DROP) {
-        throw new Error(`splitAssetWrappedScriptPubKey: expected OP_DROP at offset ${after}, got 0x${bytes[after].toString(16)}`);
-    }
-    if (after + 1 !== bytes.length) {
-        throw new Error(`splitAssetWrappedScriptPubKey: ${bytes.length - after - 1} trailing bytes after OP_DROP`);
-    }
-    const { assetName, amountRaw } = parseAssetTransferPayload(payload);
-    return {
-        prefixHex: bytesToHex(prefix),
-        assetTransfer: {
-            assetName,
-            amountRaw,
-            payloadHex: bytesToHex(payload),
-        },
-    };
+function toDecoded(txOrHex) {
+    return typeof txOrHex === 'string' ? parseTransaction(txOrHex) : txOrHex;
 }
-
-/**
- * Shared parsing primitives for strict covenant parsers. Each covenant
- * parser walks the exact byte layout emitted by its builder and fails on
- * any deviation; the primitives here centralize the cursor arithmetic,
- * pushdata decoding, and CScriptNum decoding so the legacy and PQ parsers
- * (and future covenant parsers) cannot drift in rigor.
- */
-function makeCursor(bytes) {
-    return { bytes, pos: 0 };
-}
-/** Consume one byte and verify it equals `expected`. */
-function expectByte(c, expected, label) {
-    if (c.pos >= c.bytes.length) {
-        throw new Error(`parse: unexpected end of script while reading ${label}`);
-    }
-    const got = c.bytes[c.pos];
-    if (got !== expected) {
-        throw new Error(`parse: expected ${label} = 0x${expected.toString(16)} at offset ${c.pos}, got 0x${got.toString(16)}`);
-    }
-    c.pos += 1;
-}
-/** Fail if the cursor has not consumed every byte of the script. */
-function assertTrailing(c) {
-    if (c.pos !== c.bytes.length) {
-        throw new Error(`parse: ${c.bytes.length - c.pos} trailing bytes after end of script`);
-    }
-}
-/**
- * Read one pushdata element from the cursor. Supports direct pushes
- * (1..75 bytes), `OP_PUSHDATA1` and `OP_PUSHDATA2`. `OP_PUSHDATA4` is not
- * supported by any current covenant script and would overflow the
- * per-element cap anyway. Truncation is checked for all length fields
- * and payload ranges.
- */
-function readPush(c, label) {
-    if (c.pos >= c.bytes.length) {
-        throw new Error(`parse: unexpected end of script while reading push for ${label}`);
-    }
-    const opcode = c.bytes[c.pos];
-    c.pos += 1;
-    // Short direct push: 1..75 bytes
-    if (opcode >= 0x01 && opcode <= 0x4b) {
-        const len = opcode;
-        if (c.pos + len > c.bytes.length) {
-            throw new Error(`parse: short push of ${len} bytes exceeds script length at ${label}`);
-        }
-        const data = c.bytes.slice(c.pos, c.pos + len);
-        c.pos += len;
-        return data;
-    }
-    // OP_PUSHDATA1
-    if (opcode === 0x4c) {
-        if (c.pos >= c.bytes.length) {
-            throw new Error(`parse: truncated PUSHDATA1 length at ${label}`);
-        }
-        const len = c.bytes[c.pos];
-        c.pos += 1;
-        if (c.pos + len > c.bytes.length) {
-            throw new Error(`parse: PUSHDATA1 of ${len} bytes exceeds script length at ${label}`);
-        }
-        const data = c.bytes.slice(c.pos, c.pos + len);
-        c.pos += len;
-        return data;
-    }
-    // OP_PUSHDATA2
-    if (opcode === 0x4d) {
-        if (c.pos + 2 > c.bytes.length) {
-            throw new Error(`parse: truncated PUSHDATA2 length at ${label}`);
-        }
-        const len = c.bytes[c.pos] | (c.bytes[c.pos + 1] << 8);
-        c.pos += 2;
-        if (c.pos + len > c.bytes.length) {
-            throw new Error(`parse: PUSHDATA2 of ${len} bytes exceeds script length at ${label}`);
-        }
-        const data = c.bytes.slice(c.pos, c.pos + len);
-        c.pos += len;
-        return data;
-    }
-    throw new Error(`parse: expected a pushdata opcode at ${label}, got 0x${opcode.toString(16)} at offset ${c.pos - 1}`);
-}
-/**
- * Decode a `CScriptNum` byte vector (little-endian sign-magnitude, up to
- * 8 bytes) into a BigInt. Empty vector encodes 0.
- */
-function decodeScriptNum(data, label) {
-    if (data.length === 0)
-        return 0n;
-    if (data.length > 8) {
-        throw new Error(`parse: CScriptNum at ${label} exceeds 8 bytes`);
-    }
-    let n = 0n;
-    for (let i = 0; i < data.length - 1; i += 1) {
-        n |= BigInt(data[i]) << BigInt(8 * i);
-    }
-    const last = data[data.length - 1];
-    n |= BigInt(last & 0x7f) << BigInt(8 * (data.length - 1));
-    if (last & 0x80) {
-        n = -n;
-    }
-    return n;
-}
-/**
- * Read a push as a non-negative CScriptNum. Recognises OP_1..OP_16
- * shorthand. `OP_0` is not accepted because the covenant callers use this
- * only for values that are strictly positive (prices, selectors, indices).
- */
-function readPushPositiveInt(c, label) {
-    if (c.pos >= c.bytes.length) {
-        throw new Error(`parse: end of script at ${label}`);
-    }
-    const opcode = c.bytes[c.pos];
-    if (opcode >= OP_1 && opcode <= 0x60) {
-        c.pos += 1;
-        return BigInt(opcode - OP_1 + 1);
-    }
-    const data = readPush(c, label);
-    return decodeScriptNum(data, label);
-}
-/**
- * Read a 1-byte selector as an UNSIGNED 8-bit integer (0..255). Accepts
- * two on-wire encodings, because old vs new covenant builders differ:
- *   - `OP_1..OP_16` shorthand (single opcode) → values 1..16.
- *   - `0x01 <byte>` raw 1-byte push → any value 1..255.
- *
- * Values 0x80..0xff MUST use the raw-push form; the CScriptNum encoding
- * would need a 0x00 padding byte and become 2 bytes on-stack, which
- * consensus `OP_TXHASH` rejects. The builder in `script-pq.ts` emits the
- * raw-push form unconditionally; the parser stays lenient so covenants
- * built by older tools (using OP_N for small values) still round-trip.
- */
-function readPushUint8(c, label) {
-    if (c.pos >= c.bytes.length) {
-        throw new Error(`parse: end of script at ${label}`);
-    }
-    const opcode = c.bytes[c.pos];
-    if (opcode >= OP_1 && opcode <= 0x60) {
-        c.pos += 1;
-        return opcode - OP_1 + 1;
-    }
-    const data = readPush(c, label);
-    if (data.length !== 1) {
-        throw new Error(`parse: ${label} must be a single-byte push, got ${data.length} bytes`);
-    }
-    return data[0];
-}
-function modeForSelector(selector) {
-    if (selector === CHAINCONTEXT_HEIGHT)
-        return 'height';
-    if (selector === CHAINCONTEXT_MTP)
-        return 'mtp';
-    throw new Error('expiration OP_CHAINCONTEXT selector must be HEIGHT (0x01) or MTP (0x02)');
-}
-function readOptionalExpirationGate(c, nextOpcodeWithoutGate, label) {
-    if (c.pos >= c.bytes.length || c.bytes[c.pos] === nextOpcodeWithoutGate) {
-        return undefined;
-    }
-    const value = readPushPositiveInt(c, `expiration value (${label})`);
-    if (value <= 0n) {
-        throw new Error(`parse: expiration value (${label}) must be > 0`);
-    }
-    const selector = readPushUint8(c, `expiration selector (${label})`);
-    const mode = modeForSelector(selector);
-    expectByte(c, OP_CHAINCONTEXT, `OP_CHAINCONTEXT (${label})`);
-    expectByte(c, OP_GREATERTHAN, `OP_GREATERTHAN (${label})`);
-    expectByte(c, OP_VERIFY, `OP_VERIFY (${label})`);
-    return { mode, value };
-}
-function assertSameExpiration(a, b, label) {
-    if (a === undefined && b === undefined)
-        return;
-    if (a === undefined || b === undefined || a.mode !== b.mode || a.value !== b.value) {
-        throw new Error(`parse: expiration differs between ${label}`);
-    }
-}
-
-/**
- * Witness-stack builders for the Partial-Fill Sell Order covenant.
- *
- * When the covenant lives behind an AuthScript commitment (the only
- * asset-compatible deployment since the node's OP_XNA_ASSET placement rules
- * — bare covenant outputs can no longer carry assets), the unlock data goes
- * in the witness, not the scriptSig. The scriptSig builders in `spend.ts`
- * return a serialized script that PUSHES the elements; a witness needs the
- * elements THEMSELVES, one per stack slot, so those blobs cannot be reused
- * as a single `args` entry.
- *
- * These builders return the raw `args` stack (bottom → top), mirroring the
- * shapes documented in `spend.ts`:
- *
- *   Full fill:     [ <1>, <0> ]
- *   Partial fill:  [ <N>, <0>, <0> ]
- *   Cancel:        [ <sig>, <pubkey>, <1> ]
- *
- * Numbers are minimal CScriptNum stack values (0 = empty element). Wrap the
- * result with `buildAuthScriptWitnessNoAuth({ args, witnessScript: covenant })`
- * (from `standard/authscript.ts`) to get the final `[0x00, ...args, covenant]`
- * witness.
- */
-const MAX_PQ_SCRIPT_ELEMENT_SIZE = 3072;
-/**
- * Witness `args` for the public fill branches. Same semantics and
- * validations as `buildFillScriptSig`.
- */
-function buildFillWitnessStack(amount, total) {
-    if (typeof amount !== 'bigint' || typeof total !== 'bigint') {
-        throw new Error('amount and total must be bigint');
-    }
-    if (amount <= 0n) {
-        throw new Error('fill amount must be > 0');
-    }
-    if (total <= 0n) {
-        throw new Error('total must be > 0');
-    }
-    if (amount > total) {
-        throw new Error('fill amount exceeds the covenant total');
-    }
-    if (amount === total) {
-        // Full fill: covenant drains entirely; buyer does not push N.
-        return [encodeScriptNum(1n), encodeScriptNum(0n)];
-    }
-    // Partial fill: N, then both flag values.
-    return [encodeScriptNum(amount), encodeScriptNum(0n), encodeScriptNum(0n)];
-}
-/**
- * Witness `args` for the seller's ECDSA cancel branch. Same semantics and
- * validations as `buildCancelScriptSig`.
- */
-function buildCancelWitnessStack(signatureDer, pubKey) {
-    if (!(signatureDer instanceof Uint8Array) || signatureDer.length === 0) {
-        throw new Error('signatureDer must be a non-empty Uint8Array');
-    }
-    if (!(pubKey instanceof Uint8Array) || (pubKey.length !== 33 && pubKey.length !== 65)) {
-        throw new Error('pubKey must be a compressed (33B) or uncompressed (65B) secp256k1 key');
-    }
-    return [signatureDer, pubKey, encodeScriptNum(1n)];
-}
-/**
- * Witness `args` for the seller's PQ (ML-DSA-44) cancel branch. Same
- * semantics and validations as `buildCancelScriptSigPQ`.
- */
-function buildCancelWitnessStackPQ(sigPQ, pubKey) {
-    if (!(sigPQ instanceof Uint8Array) || sigPQ.length === 0) {
-        throw new Error('sigPQ must be a non-empty Uint8Array');
-    }
-    if (sigPQ.length > MAX_PQ_SCRIPT_ELEMENT_SIZE) {
-        throw new Error(`sigPQ of ${sigPQ.length} bytes exceeds MAX_PQ_SCRIPT_ELEMENT_SIZE (${MAX_PQ_SCRIPT_ELEMENT_SIZE})`);
-    }
-    if (!(pubKey instanceof Uint8Array) || pubKey.length === 0) {
-        throw new Error('pubKey must be a non-empty Uint8Array');
-    }
-    if (pubKey.length > MAX_PQ_SCRIPT_ELEMENT_SIZE) {
-        throw new Error(`pubKey of ${pubKey.length} bytes exceeds MAX_PQ_SCRIPT_ELEMENT_SIZE (${MAX_PQ_SCRIPT_ELEMENT_SIZE})`);
-    }
-    return [sigPQ, pubKey, encodeScriptNum(1n)];
-}
-
-/**
- * Parser for the Partial-Fill Sell Order covenant (three-branch).
- *
- * Extracts `(sellerPubKeyHash, unitPriceSats, tokenId)` from a scriptPubKey
- * that was produced by `buildPartialFillScript`. Walks the exact byte
- * layout emitted by the builder and fails on any deviation — this is
- * deliberate, so a downstream indexer can unambiguously classify a UTXO as
- * "partial-fill order" or "unknown script" with no false positives.
- *
- * The full-fill and partial-fill branches share `(sellerScriptPubKey,
- * unitPriceSats, tokenId)`. The parser reads both branches and verifies
- * consistency; inconsistency throws.
- */
-/**
- * Parse a covenant scriptPubKey and extract its parameters. Throws with a
- * descriptive message if the bytes don't match the partial-fill template.
- */
-function parsePartialFillScript(script, network = 'xna-test') {
-    const bytes = typeof script === 'string' ? hexToBytes(script) : script;
-    const c = makeCursor(bytes);
-    // ═════ Outer IF — Cancel branch ═════
-    expectByte(c, OP_IF, 'OP_IF (outer cancel)');
-    expectByte(c, OP_DUP, 'OP_DUP (cancel)');
-    expectByte(c, OP_HASH160, 'OP_HASH160');
-    const sellerPubKeyHash = readPush(c, 'sellerPubKeyHash');
-    if (sellerPubKeyHash.length !== 20) {
-        throw new Error(`parse: sellerPubKeyHash is ${sellerPubKeyHash.length} bytes, expected 20`);
-    }
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (cancel)');
-    expectByte(c, OP_CHECKSIG, 'OP_CHECKSIG (cancel)');
-    expectByte(c, OP_ELSE, 'OP_ELSE (outer → fill)');
-    // ═════ Inner IF — Full-fill branch ═════
-    expectByte(c, OP_IF, 'OP_IF (inner full-fill)');
-    const expirationFull = readOptionalExpirationGate(c, OP_0, 'full');
-    // N = inputAmount
-    expectByte(c, OP_0, 'OP_0 (input idx, full)');
-    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, full)');
-    expectByte(c, OP_INPUTASSETFIELD, 'OP_INPUTASSETFIELD (full)');
-    // payment value check
-    expectByte(c, OP_DUP, 'OP_DUP (price, full)');
-    const unitPriceSatsFull = readPushPositiveInt(c, 'unitPriceSats (full)');
-    expectByte(c, OP_MUL, 'OP_MUL (full)');
-    expectByte(c, OP_0, 'OP_0 (payment idx, full)');
-    expectByte(c, OP_OUTPUTVALUE, 'OP_OUTPUTVALUE (full)');
-    expectByte(c, OP_SWAP, 'OP_SWAP (full)');
-    expectByte(c, OP_GREATERTHANOREQUAL, 'OP_GREATERTHANOREQUAL (full)');
-    expectByte(c, OP_VERIFY, 'OP_VERIFY (payment full)');
-    // payment spk
-    expectByte(c, OP_0, 'OP_0 (spk idx, full)');
-    expectByte(c, OP_OUTPUTSCRIPT, 'OP_OUTPUTSCRIPT (payment full)');
-    const sellerSpkFull = readPush(c, 'sellerScriptPubKey (full)');
-    const expectedSpk = new Uint8Array([
-        OP_DUP, OP_HASH160, 0x14, ...sellerPubKeyHash, OP_EQUALVERIFY, OP_CHECKSIG
-    ]);
-    if (!bytesEqual(sellerSpkFull, expectedSpk)) {
-        throw new Error('parse: full-fill seller scriptPubKey does not match the cancel PKH');
-    }
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment spk full)');
-    // buyer amount == N (full)
-    expectByte(c, OP_DUP, 'OP_DUP (buyer amount, full)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
-    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, full)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, full)');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, full)');
-    // buyer name == tokenId (full)
-    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel, full)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, full)');
-    const tokenIdFull = readPush(c, 'tokenId (full)');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, full)');
-    // tail (full)
-    expectByte(c, OP_DROP, 'OP_DROP (full)');
-    expectByte(c, OP_1, 'OP_1 (true, full)');
-    expectByte(c, OP_ELSE, 'OP_ELSE (inner → partial fill)');
-    // ═════ Inner ELSE — Partial-fill branch ═════
-    const expirationPartial = readOptionalExpirationGate(c, OP_DUP, 'partial');
-    // Payment value
-    expectByte(c, OP_DUP, 'OP_DUP (price, partial)');
-    const unitPriceSatsPartial = readPushPositiveInt(c, 'unitPriceSats (partial)');
-    expectByte(c, OP_MUL, 'OP_MUL (partial)');
-    expectByte(c, OP_0, 'OP_0 (pay idx, partial)');
-    expectByte(c, OP_OUTPUTVALUE, 'OP_OUTPUTVALUE (partial)');
-    expectByte(c, OP_SWAP, 'OP_SWAP (partial)');
-    expectByte(c, OP_GREATERTHANOREQUAL, 'OP_GREATERTHANOREQUAL (partial)');
-    expectByte(c, OP_VERIFY, 'OP_VERIFY (payment partial)');
-    // Payment spk
-    expectByte(c, OP_0, 'OP_0 (spk idx, partial)');
-    expectByte(c, OP_OUTPUTSCRIPT, 'OP_OUTPUTSCRIPT (payment partial)');
-    const sellerSpkPartial = readPush(c, 'sellerScriptPubKey (partial)');
-    if (!bytesEqual(sellerSpkPartial, expectedSpk)) {
-        throw new Error('parse: partial-fill seller scriptPubKey does not match the cancel PKH');
-    }
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment spk partial)');
-    // Buyer amount
-    expectByte(c, OP_DUP, 'OP_DUP (buyer amount, partial)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
-    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, partial)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, partial)');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, partial)');
-    // Buyer name
-    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel, partial)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, partial)');
-    const tokenIdPartial1 = readPush(c, 'tokenId partial #1');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, partial)');
-    // Continuation commitment
-    expectByte(c, OP_2, 'OP_2 (remainder idx)');
-    expectByte(c, OP_OUTPUTAUTHCOMMITMENT, 'OP_OUTPUTAUTHCOMMITMENT (remainder)');
-    expectByte(c, OP_2, 'OP_2 (TXFIELD sel: AUTHSCRIPT_COMMITMENT)');
-    expectByte(c, OP_TXFIELD, 'OP_TXFIELD');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder auth)');
-    // Continuation name
-    expectByte(c, OP_2, 'OP_2 (remainder idx)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder name)');
-    const tokenIdPartial2 = readPush(c, 'tokenId partial #2');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder name)');
-    // Continuation amount
-    expectByte(c, OP_2, 'OP_2 (remainder idx)');
-    expectByte(c, OP_2, 'OP_2 (AMOUNT sel)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder amount)');
-    expectByte(c, OP_OVER, 'OP_OVER');
-    expectByte(c, OP_0, 'OP_0 (input idx)');
-    expectByte(c, OP_2, 'OP_2 (AMOUNT sel)');
-    expectByte(c, OP_INPUTASSETFIELD, 'OP_INPUTASSETFIELD');
-    expectByte(c, OP_SWAP, 'OP_SWAP');
-    expectByte(c, OP_SUB, 'OP_SUB');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder amount)');
-    // Tail (partial)
-    expectByte(c, OP_DROP, 'OP_DROP (partial)');
-    expectByte(c, OP_1, 'OP_1 (true, partial)');
-    // Close the nested structure
-    expectByte(c, OP_ENDIF, 'OP_ENDIF (inner)');
-    expectByte(c, OP_ENDIF, 'OP_ENDIF (outer)');
-    assertTrailing(c);
-    // Cross-branch consistency: all three (full token, partial name #1,
-    // partial name #2) must agree, and the two unit prices must match.
-    if (!bytesEqual(tokenIdFull, tokenIdPartial1)) {
-        throw new Error('parse: tokenId differs between full-fill and partial-fill branches');
-    }
-    if (!bytesEqual(tokenIdPartial1, tokenIdPartial2)) {
-        throw new Error('parse: tokenId bytes differ between buyer and remainder partial checks');
-    }
-    if (unitPriceSatsFull !== unitPriceSatsPartial) {
-        throw new Error('parse: unitPriceSats differs between full-fill and partial-fill branches');
-    }
-    assertSameExpiration(expirationFull, expirationPartial, 'full-fill and partial-fill branches');
-    const tokenId = new TextDecoder('utf-8', { fatal: true }).decode(tokenIdFull);
-    return {
-        network,
-        sellerPubKeyHash,
-        unitPriceSats: unitPriceSatsFull,
-        tokenId,
-        expiration: expirationFull,
-        scriptHex: bytesToHex(bytes)
-    };
-}
-/**
- * Parse a PQ partial-fill covenant. Throws if the bytes do not match the
- * exact layout produced by `buildPartialFillScriptPQ`.
- */
-function parsePartialFillScriptPQ(script, network = 'xna-test') {
-    const bytes = typeof script === 'string' ? hexToBytes(script) : script;
-    const c = makeCursor(bytes);
-    // ═════ Outer IF — Cancel branch (PQ) ═════
-    expectByte(c, OP_IF, 'OP_IF (outer cancel)');
-    expectByte(c, OP_DUP, 'OP_DUP (cancel)');
-    expectByte(c, OP_SHA256, 'OP_SHA256');
-    const pubKeyCommitment = readPush(c, 'pubKeyCommitment');
-    if (pubKeyCommitment.length !== 32) {
-        throw new Error(`parse-pq: pubKeyCommitment must be 32 bytes, got ${pubKeyCommitment.length}`);
-    }
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (cancel)');
-    const txHashSelector = readPushUint8(c, 'txHashSelector');
-    if (txHashSelector < 1) {
-        throw new Error(`parse-pq: txHashSelector 0x00 is rejected by OP_TXHASH`);
-    }
-    expectByte(c, OP_TXHASH, 'OP_TXHASH');
-    expectByte(c, OP_SWAP, 'OP_SWAP');
-    expectByte(c, OP_CHECKSIGFROMSTACK, 'OP_CHECKSIGFROMSTACK');
-    expectByte(c, OP_ELSE, 'OP_ELSE (outer → fill)');
-    // ═════ Inner IF — Full-fill branch ═════
-    expectByte(c, OP_IF, 'OP_IF (inner full-fill)');
-    const expirationFull = readOptionalExpirationGate(c, OP_0, 'full');
-    expectByte(c, OP_0, 'OP_0 (input idx, full)');
-    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, full)');
-    expectByte(c, OP_INPUTASSETFIELD, 'OP_INPUTASSETFIELD (full)');
-    expectByte(c, OP_DUP, 'OP_DUP (price, full)');
-    const unitPriceSatsFull = readPushPositiveInt(c, 'unitPriceSats (full)');
-    expectByte(c, OP_MUL, 'OP_MUL (full)');
-    expectByte(c, OP_0, 'OP_0 (payment idx, full)');
-    expectByte(c, OP_OUTPUTVALUE, 'OP_OUTPUTVALUE (full)');
-    expectByte(c, OP_SWAP, 'OP_SWAP (full)');
-    expectByte(c, OP_GREATERTHANOREQUAL, 'OP_GE (full)');
-    expectByte(c, OP_VERIFY, 'OP_VERIFY (full)');
-    expectByte(c, OP_0, 'OP_0 (payment spk idx, full)');
-    expectByte(c, OP_OUTPUTSCRIPT, 'OP_OUTPUTSCRIPT (payment full)');
-    const paymentScriptPubKeyFull = readPush(c, 'paymentScriptPubKey (full)');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment full)');
-    expectByte(c, OP_DUP, 'OP_DUP (buyer amount, full)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
-    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, full)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, full)');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, full)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel, full)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, full)');
-    const tokenIdFull = readPush(c, 'tokenId (full)');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, full)');
-    expectByte(c, OP_DROP, 'OP_DROP (full)');
-    expectByte(c, OP_1, 'OP_1 (true, full)');
-    expectByte(c, OP_ELSE, 'OP_ELSE (inner → partial fill)');
-    // ═════ Inner ELSE — Partial-fill branch ═════
-    const expirationPartial = readOptionalExpirationGate(c, OP_DUP, 'partial');
-    expectByte(c, OP_DUP, 'OP_DUP (price, partial)');
-    const unitPriceSatsPartial = readPushPositiveInt(c, 'unitPriceSats (partial)');
-    expectByte(c, OP_MUL, 'OP_MUL (partial)');
-    expectByte(c, OP_0, 'OP_0 (payment idx, partial)');
-    expectByte(c, OP_OUTPUTVALUE, 'OP_OUTPUTVALUE (partial)');
-    expectByte(c, OP_SWAP, 'OP_SWAP (partial)');
-    expectByte(c, OP_GREATERTHANOREQUAL, 'OP_GE (partial)');
-    expectByte(c, OP_VERIFY, 'OP_VERIFY (partial)');
-    expectByte(c, OP_0, 'OP_0 (payment spk idx, partial)');
-    expectByte(c, OP_OUTPUTSCRIPT, 'OP_OUTPUTSCRIPT (payment partial)');
-    const paymentScriptPubKeyPartial = readPush(c, 'paymentScriptPubKey (partial)');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment partial)');
-    expectByte(c, OP_DUP, 'OP_DUP (buyer amount, partial)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
-    expectByte(c, OP_2, 'OP_2 (AMOUNT sel, partial)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, partial)');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, partial)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel, partial)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, partial)');
-    const tokenIdPartial1 = readPush(c, 'tokenId partial #1');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, partial)');
-    // Continuation commitment
-    expectByte(c, OP_2, 'OP_2 (remainder idx)');
-    expectByte(c, OP_OUTPUTAUTHCOMMITMENT, 'OP_OUTPUTAUTHCOMMITMENT (remainder)');
-    expectByte(c, OP_2, 'OP_2 (TXFIELD sel: AUTHSCRIPT_COMMITMENT)');
-    expectByte(c, OP_TXFIELD, 'OP_TXFIELD');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder auth)');
-    expectByte(c, OP_2, 'OP_2 (remainder idx)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder name)');
-    const tokenIdPartial2 = readPush(c, 'tokenId partial #2');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder name)');
-    expectByte(c, OP_2, 'OP_2 (remainder idx)');
-    expectByte(c, OP_2, 'OP_2 (AMOUNT sel)');
-    expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder amount)');
-    expectByte(c, OP_OVER, 'OP_OVER');
-    expectByte(c, OP_0, 'OP_0 (input idx)');
-    expectByte(c, OP_2, 'OP_2 (AMOUNT sel)');
-    expectByte(c, OP_INPUTASSETFIELD, 'OP_INPUTASSETFIELD');
-    expectByte(c, OP_SWAP, 'OP_SWAP');
-    expectByte(c, OP_SUB, 'OP_SUB');
-    expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder amount)');
-    expectByte(c, OP_DROP, 'OP_DROP (partial)');
-    expectByte(c, OP_1, 'OP_1 (true, partial)');
-    expectByte(c, OP_ENDIF, 'OP_ENDIF (inner)');
-    expectByte(c, OP_ENDIF, 'OP_ENDIF (outer)');
-    assertTrailing(c);
-    // Cross-branch consistency.
-    if (!bytesEqual(paymentScriptPubKeyFull, paymentScriptPubKeyPartial)) {
-        throw new Error('parse-pq: paymentScriptPubKey differs between full-fill and partial-fill branches');
-    }
-    if (!bytesEqual(tokenIdFull, tokenIdPartial1)) {
-        throw new Error('parse-pq: tokenId differs between full-fill and partial-fill branches');
-    }
-    if (!bytesEqual(tokenIdPartial1, tokenIdPartial2)) {
-        throw new Error('parse-pq: tokenId differs between buyer and remainder partial checks');
-    }
-    if (unitPriceSatsFull !== unitPriceSatsPartial) {
-        throw new Error('parse-pq: unitPriceSats differs between full-fill and partial-fill branches');
-    }
-    assertSameExpiration(expirationFull, expirationPartial, 'full-fill and partial-fill branches');
-    const tokenId = new TextDecoder('utf-8', { fatal: true }).decode(tokenIdFull);
-    return {
-        network,
-        pubKeyCommitment,
-        tokenId,
-        unitPriceSats: unitPriceSatsFull,
-        txHashSelector,
-        expiration: expirationFull,
-        paymentScriptPubKey: paymentScriptPubKeyFull,
-        scriptHex: bytesToHex(bytes)
-    };
+function estimateTransactionSize(txOrHex) {
+    const tx = toDecoded(txOrHex);
+    const size = serializeTransaction(tx).length / 2;
+    const strippedSize = serializeTransaction(tx, { includeWitness: false }).length / 2;
+    // consensus/validation.h: weight = stripped * (WITNESS_SCALE_FACTOR - 1) + total.
+    const weight = strippedSize * 3 + size;
+    return { size, strippedSize, weight, vsize: Math.ceil(weight / 4) };
 }
 
 /**
@@ -22456,6 +23079,9 @@ function bufferFromHex(value, label) {
         throw new Error(`${label} must be a hex string`);
     }
     return bufferExports.Buffer.from(value, "hex");
+}
+function bufferFromHexAllowEmpty(value, label) {
+    return value === "" ? bufferExports.Buffer.alloc(0) : bufferFromHex(value, label);
 }
 function toBigIntAmount(value, label) {
     if (typeof value === "bigint")
@@ -22781,7 +23407,58 @@ function getAuthScriptCommitment(authType, publicKey, witnessScript) {
     ]);
     return taggedHash(AUTHSCRIPT_TAG, preimage);
 }
-function hashForAuthScript(tx, inIndex, witnessScript, amount, hashType, authType) {
+function serializeRefInputOutpoint(ref) {
+    const txid = bufferFromHex(ref.txid, "vrefin txid");
+    if (txid.length !== 32) {
+        throw new Error(`vrefin txid must be 32 bytes, got ${txid.length}`);
+    }
+    const index = bufferExports.Buffer.alloc(4);
+    index.writeUInt32LE(ref.vout, 0);
+    return bufferExports.Buffer.concat([bufferExports.Buffer.from(txid).reverse(), index]);
+}
+function getRefInputsData(decoded) {
+    if (decoded.version !== 3)
+        return null;
+    const vrefin = decoded.vrefin ?? [];
+    return {
+        count: vrefin.length,
+        concat: bufferExports.Buffer.concat(vrefin.map(serializeRefInputOutpoint)),
+    };
+}
+/**
+ * Legacy (SIGVERSION_BASE) sighash for a v3 transaction. bitcoinjs'
+ * `hashForSignature` cannot produce it: the node's
+ * `CTransactionSignatureSerializer` serializes `CompactSize(vrefin.length)`
+ * plus each outpoint between vout and nLockTime, unconditionally for v3.
+ * Only SIGHASH_ALL (without ANYONECANPAY) is implemented — the only mode
+ * this library signs with.
+ */
+function hashForLegacySignatureV3(tx, refInputs, inIndex, scriptPubKey, hashType) {
+    if ((hashType & 0x1f) !== srcExports.Transaction.SIGHASH_ALL || (hashType & srcExports.Transaction.SIGHASH_ANYONECANPAY) !== 0) {
+        throw new Error("hashForLegacySignatureV3 only supports plain SIGHASH_ALL");
+    }
+    const version = bufferExports.Buffer.alloc(4);
+    version.writeInt32LE(tx.version, 0);
+    const locktime = bufferExports.Buffer.alloc(4);
+    locktime.writeUInt32LE(tx.locktime, 0);
+    const hashTypeBuffer = bufferExports.Buffer.alloc(4);
+    hashTypeBuffer.writeUInt32LE(hashType >>> 0, 0);
+    const parts = [version, encodeVarInt(tx.ins.length)];
+    for (let i = 0; i < tx.ins.length; i++) {
+        const input = tx.ins[i];
+        const sequence = bufferExports.Buffer.alloc(4);
+        sequence.writeUInt32LE(input.sequence, 0);
+        parts.push(serializeOutpoint(input), i === inIndex ? encodeVarSlice(scriptPubKey) : encodeVarInt(0), sequence);
+    }
+    parts.push(encodeVarInt(tx.outs.length));
+    for (const out of tx.outs) {
+        parts.push(serializeOutput(out));
+    }
+    parts.push(encodeVarInt(refInputs.count), refInputs.concat);
+    parts.push(locktime, hashTypeBuffer);
+    return hash256(bufferExports.Buffer.concat(parts));
+}
+function hashForAuthScript(tx, inIndex, witnessScript, amount, hashType, authType, refInputs = null) {
     const baseType = hashType & 0x1f;
     const anyoneCanPay = (hashType & srcExports.Transaction.SIGHASH_ANYONECANPAY) !== 0;
     let hashPrevouts = ZERO_32;
@@ -22827,6 +23504,9 @@ function hashForAuthScript(tx, inIndex, witnessScript, amount, hashType, authTyp
         amountBuffer,
         sequence,
         hashOutputs,
+        // NIP-014: for v3, hashRefInputs goes between hashOutputs and locktime,
+        // ALWAYS — an empty vrefin contributes hash256(""), not a zero hash.
+        ...(refInputs ? [hash256(refInputs.concat)] : []),
         locktime,
         bufferExports.Buffer.from([authType]),
         hashTypeBuffer,
@@ -22866,10 +23546,35 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
     if (!COIN)
         throw new Error("Invalid network specified");
     COIN.bech32 = COIN.bech32 || "";
-    const unsignedTx = srcExports.Transaction.fromHex(rawTransactionHex);
+    // The codec understands v1/v2/v3 (with vrefin); bitcoinjs alone would
+    // misparse a v3 transaction. The bitcoinjs Transaction remains the
+    // internal working representation — for v3 it is a "reduced" view that
+    // never touches the wire: the signed hex is re-serialized by the codec.
+    const decoded = parseTransaction(rawTransactionHex);
+    const refInputs = getRefInputsData(decoded);
+    // Consensus (tx_verify.cpp:520-537): within a v3 tx, vrefin entries must
+    // be unique (bad-txns-vrefin-duplicate) and must not overlap any vin
+    // prevout (bad-txns-vrefin-overlap-vin). Fail at signing time instead of
+    // producing a tx the node is guaranteed to reject.
+    if (refInputs && refInputs.count > 0) {
+        const prevouts = new Set(decoded.inputs.map((input) => getUTXOKey(input.txid, input.vout)));
+        const seenRefs = new Set();
+        for (const ref of decoded.vrefin) {
+            const key = getUTXOKey(ref.txid, ref.vout);
+            if (seenRefs.has(key)) {
+                throw new Error(`vrefin reference ${ref.txid}:${ref.vout} is duplicated ` +
+                    `(the node rejects this with bad-txns-vrefin-duplicate)`);
+            }
+            seenRefs.add(key);
+            if (prevouts.has(key)) {
+                throw new Error(`vrefin reference ${ref.txid}:${ref.vout} overlaps a transaction input ` +
+                    `(the node rejects this with bad-txns-vrefin-overlap-vin)`);
+            }
+        }
+    }
     const tx = new srcExports.Transaction();
-    tx.version = unsignedTx.version;
-    tx.locktime = unsignedTx.locktime;
+    tx.version = decoded.version;
+    tx.locktime = decoded.locktime;
     const legacyKeyPairCache = new Map();
     const pqMaterialCache = new Map();
     const utxoMap = new Map(UTXOs.map((utxo) => [getUTXOKey(utxo.txid, utxo.outputIndex), utxo]));
@@ -22908,15 +23613,19 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
     function getUTXO(txid, vout) {
         return utxoMap.get(getUTXOKey(txid, vout));
     }
-    for (let i = 0; i < unsignedTx.ins.length; i++) {
-        const input = unsignedTx.ins[i];
-        tx.addInput(bufferExports.Buffer.from(input.hash), input.index, input.sequence, input.script);
-        if (input.witness.length > 0) {
-            tx.setWitness(i, input.witness);
+    for (let i = 0; i < decoded.inputs.length; i++) {
+        const input = decoded.inputs[i];
+        tx.addInput(bufferExports.Buffer.from(bufferFromHex(input.txid, "input txid")).reverse(), input.vout, input.sequence, bufferFromHexAllowEmpty(input.scriptSigHex ?? "", "input scriptSig"));
+        if (input.witness && input.witness.length > 0) {
+            tx.setWitness(i, input.witness.map((item, w) => bufferFromHexAllowEmpty(item, `witness[${w}]`)));
         }
     }
-    for (const out of unsignedTx.outs) {
-        tx.addOutput(out.script, out.value);
+    for (const out of decoded.outputs) {
+        const value = Number(out.valueSats);
+        if (!Number.isSafeInteger(value) || value < 0) {
+            throw new Error(`Output value ${out.valueSats} out of safe integer range`);
+        }
+        tx.addOutput(bufferFromHex(out.scriptPubKeyHex, "output script"), value);
     }
     // NIP-025: on networks where nASSETRBFBlockEnabled is active, a tx that
     // spends any asset-AuthScript UTXO must have EVERY input opted out of
@@ -23081,7 +23790,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
                 // AuthScript-NOAUTH sighash: scriptCode = the covenant (witness
                 // script), authType = 0x00. Amount is the UTXO's XNA value —
                 // typically 0 for asset covenant outputs.
-                const sighash = hashForAuthScript(tx, i, covenantScriptBytes, amount, HASH_TYPE, NOAUTH_TYPE);
+                const sighash = hashForAuthScript(tx, i, covenantScriptBytes, amount, HASH_TYPE, NOAUTH_TYPE, refInputs);
                 const rawSignature = keyPair.sign(sighash);
                 const signatureWithHashType = srcExports.script.signature.encode(bufferExports.Buffer.from(rawSignature), HASH_TYPE);
                 const witnessStack = buildAuthScriptWitnessNoAuth({
@@ -23200,7 +23909,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
             }
             else if (spendTemplate.authType === PQ_AUTHSCRIPT_TYPE) {
                 const pqMaterial = getPQMaterialByAddress(utxo.address);
-                const sighash = hashForAuthScript(tx, i, spendTemplate.witnessScript, getSighashAmount(utxo), HASH_TYPE, spendTemplate.authType);
+                const sighash = hashForAuthScript(tx, i, spendTemplate.witnessScript, getSighashAmount(utxo), HASH_TYPE, spendTemplate.authType, refInputs);
                 const signature = bufferExports.Buffer.from(ml_dsa44.sign(new Uint8Array(sighash), new Uint8Array(pqMaterial.secretKey), {
                     extraEntropy: false,
                 }));
@@ -23215,7 +23924,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
             }
             else {
                 const keyPair = getKeyPairByAddress(utxo.address);
-                const sighash = hashForAuthScript(tx, i, spendTemplate.witnessScript, getSighashAmount(utxo), HASH_TYPE, spendTemplate.authType);
+                const sighash = hashForAuthScript(tx, i, spendTemplate.witnessScript, getSighashAmount(utxo), HASH_TYPE, spendTemplate.authType, refInputs);
                 const rawSignature = keyPair.sign(sighash);
                 const signatureWithHashType = srcExports.script.signature.encode(bufferExports.Buffer.from(rawSignature), HASH_TYPE);
                 witnessStack = [
@@ -23248,7 +23957,9 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
             continue;
         }
         const keyPair = getKeyPairByAddress(utxo.address);
-        const sighash = tx.hashForSignature(i, scriptPubKey, HASH_TYPE);
+        const sighash = refInputs
+            ? hashForLegacySignatureV3(tx, refInputs, i, scriptPubKey, HASH_TYPE)
+            : tx.hashForSignature(i, scriptPubKey, HASH_TYPE);
         const rawSignature = keyPair.sign(sighash);
         const signatureWithHashType = srcExports.script.signature.encode(bufferExports.Buffer.from(rawSignature), HASH_TYPE);
         const scriptSig = srcExports.script.compile([
@@ -23265,6 +23976,19 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
             witnessItems: input.witness?.length ?? 0,
         })),
     });
+    if (refInputs) {
+        // v3 exit criterion: the signed hex is serialized by the codec end to
+        // end. bitcoinjs' toHex() does not know vrefin and would silently drop
+        // it, changing the txid.
+        return serializeTransaction({
+            ...decoded,
+            inputs: decoded.inputs.map((input, i) => ({
+                ...input,
+                scriptSigHex: bufferExports.Buffer.from(tx.ins[i].script).toString("hex"),
+                witness: tx.ins[i].witness.map((item) => bufferExports.Buffer.from(item).toString("hex")),
+            })),
+        });
+    }
     return tx.toHex();
 }
 const Signer = {
@@ -23390,38 +24114,56 @@ function buildUTXOMap(utxos) {
  * not currently required (script types are inferred from the UTXO scripts).
  */
 function estimateVirtualSize(_network, rawTransactionHex, utxos) {
-    const unsignedTx = srcExports.Transaction.fromHex(rawTransactionHex);
-    const tx = new srcExports.Transaction();
-    tx.version = unsignedTx.version;
-    tx.locktime = unsignedTx.locktime;
-    for (let i = 0; i < unsignedTx.ins.length; i++) {
-        const input = unsignedTx.ins[i];
-        tx.addInput(bufferExports.Buffer.from(input.hash), input.index, input.sequence);
-    }
-    for (const out of unsignedTx.outs) {
-        tx.addOutput(out.script, out.value);
-    }
+    const decoded = parseTransaction(rawTransactionHex);
     const utxoMap = buildUTXOMap(utxos);
-    for (let i = 0; i < tx.ins.length; i++) {
-        const input = tx.ins[i];
-        const txid = bufferExports.Buffer.from(input.hash).reverse().toString("hex");
-        const vout = input.index;
+    const dummyFor = (txid, vout) => {
         const utxo = utxoMap.get(utxoKey(txid, vout));
         if (!utxo) {
             // Caller did not supply a UTXO for this input. Assume legacy P2PKH —
             // the signer would skip this input too, but for size estimation the
             // worst-case legacy scriptSig is the safer default than nothing.
-            tx.setInputScript(i, dummyLegacyScriptSig());
-            continue;
+            return { scriptSig: dummyLegacyScriptSig(), witness: [] };
         }
         if (isPQScript(utxo.script)) {
-            tx.setInputScript(i, bufferExports.Buffer.alloc(0));
-            tx.setWitness(i, utxo.bareScriptHint
-                ? dummyCovenantWitness(utxo.bareScriptHint)
-                : dummyPQWitness());
+            return {
+                scriptSig: bufferExports.Buffer.alloc(0),
+                witness: utxo.bareScriptHint
+                    ? dummyCovenantWitness(utxo.bareScriptHint)
+                    : dummyPQWitness(),
+            };
         }
-        else {
-            tx.setInputScript(i, dummyLegacyScriptSig());
+        return { scriptSig: dummyLegacyScriptSig(), witness: [] };
+    };
+    if (decoded.version === 3) {
+        // The codec accounts for vrefin (CompactSize + 36 bytes per reference)
+        // and the witness discount, mirroring the node's serialization.
+        return estimateTransactionSize({
+            ...decoded,
+            inputs: decoded.inputs.map((input) => {
+                const dummy = dummyFor(input.txid, input.vout);
+                return {
+                    ...input,
+                    scriptSigHex: dummy.scriptSig.toString("hex"),
+                    witness: dummy.witness.map((item) => item.toString("hex")),
+                };
+            }),
+        }).vsize;
+    }
+    const tx = new srcExports.Transaction();
+    tx.version = decoded.version;
+    tx.locktime = decoded.locktime;
+    for (const input of decoded.inputs) {
+        tx.addInput(bufferExports.Buffer.from(input.txid, "hex").reverse(), input.vout, input.sequence);
+    }
+    for (const out of decoded.outputs) {
+        tx.addOutput(bufferExports.Buffer.from(out.scriptPubKeyHex, "hex"), Number(out.valueSats));
+    }
+    for (let i = 0; i < tx.ins.length; i++) {
+        const input = decoded.inputs[i];
+        const dummy = dummyFor(input.txid, input.vout);
+        tx.setInputScript(i, dummy.scriptSig);
+        if (dummy.witness.length > 0) {
+            tx.setWitness(i, dummy.witness);
         }
     }
     return tx.virtualSize();

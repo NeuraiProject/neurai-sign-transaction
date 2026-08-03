@@ -1891,3 +1891,184 @@ test("NIP-025 — rule is inactive on mainnet networks", () => {
   const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
   expect(witness).toHaveLength(2);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Transacción v3 / vrefin — NIP-014 (v2.3.0 — plan fase 3)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CTcodec = require("@neuraiproject/neurai-create-transaction");
+
+const V3_REF_A = { txid: "ee".repeat(32), vout: 1 };
+const V3_REF_B = { txid: "dd".repeat(32), vout: 0 };
+const LEGACY_TEST_ADDR = "mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA";
+const LEGACY_TEST_WIF = "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW";
+const LEGACY_TEST_SPK = "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac";
+
+function buildUnsignedHex(version, inputs, outputs, vrefin) {
+  return CTcodec.serializeTransaction({
+    version,
+    inputs: inputs.map((i) => ({
+      txid: i.txid,
+      vout: i.vout,
+      scriptSigHex: "",
+      sequence: i.sequence ?? 0xfffffffe,
+    })),
+    outputs,
+    vrefin: vrefin ?? [],
+    locktime: 0,
+  });
+}
+
+const V3_PAYOUT = [{ valueSats: 90000n, scriptPubKeyHex: LEGACY_TEST_SPK }];
+
+test("v3 — NoAuth signing preserves vrefin and round-trips through the codec", () => {
+  for (const vrefin of [[], [V3_REF_A, V3_REF_B]]) {
+    const raw = buildUnsignedHex(3, [{ txid: "44".repeat(32), vout: 0 }], V3_PAYOUT, vrefin);
+    const signedHex = Signer.sign(
+      "xna-pq-test",
+      raw,
+      [{ address: "noauth-vault", assetName: "XNA", txid: "44".repeat(32), outputIndex: 0, script: NOAUTH_SIMPLE.script, satoshis: 100000, value: 100000 }],
+      { "noauth-vault": { authType: 0 } }
+    );
+
+    const decoded = CTcodec.parseTransaction(signedHex);
+    expect(decoded.version).toBe(3);
+    expect(decoded.vrefin).toEqual(vrefin);
+    expect(decoded.inputs[0].witness).toEqual(["00", "51"]);
+    // txid computable from the stripped serialization; wtxid must differ
+    // (witness present).
+    expect(CTcodec.computeTxid(signedHex)).not.toBe(CTcodec.computeWtxid(signedHex));
+  }
+});
+
+test("v3 — legacy P2PKH sighash commits to version and vrefin", () => {
+  const input = [{ txid: "bb".repeat(32), vout: 0 }];
+  const utxos = [{ address: LEGACY_TEST_ADDR, assetName: "XNA", txid: "bb".repeat(32), outputIndex: 0, script: LEGACY_TEST_SPK, satoshis: 100000, value: 100000 }];
+  const keys = { [LEGACY_TEST_ADDR]: LEGACY_TEST_WIF };
+
+  const sigOf = (hex) => {
+    const decoded = CTcodec.parseTransaction(hex);
+    const scriptSig = Buffer.from(decoded.inputs[0].scriptSigHex, "hex");
+    return bitcoin.script.decompile(scriptSig)[0].toString("hex");
+  };
+
+  const v2 = sigOf(Signer.sign("xna-test", buildUnsignedHex(2, input, V3_PAYOUT), utxos, keys));
+  const v3Empty = sigOf(Signer.sign("xna-test", buildUnsignedHex(3, input, V3_PAYOUT, []), utxos, keys));
+  const v3Ref = sigOf(Signer.sign("xna-test", buildUnsignedHex(3, input, V3_PAYOUT, [V3_REF_A]), utxos, keys));
+
+  // v3 inserts CompactSize(vrefin)+outpoints in the legacy preimage: the
+  // signature must change against v2 even with vrefin = [], and again when
+  // vrefin is populated.
+  expect(v3Empty).not.toBe(v2);
+  expect(v3Ref).not.toBe(v3Empty);
+});
+
+test("v3 — PQ AuthScript sighash commits to hashRefInputs (also when empty)", () => {
+  const input = [{ txid: "11".repeat(32), vout: 0 }];
+  const utxos = [{ address: "pq-vault", assetName: "XNA", txid: "11".repeat(32), outputIndex: 0, script: PQ_SIMPLE.script, satoshis: 150000, value: 150000 }];
+  const keys = { "pq-vault": { seedKey: PQ_SIMPLE.seedKey } };
+
+  const sigOf = (hex) => CTcodec.parseTransaction(hex).inputs[0].witness[1];
+
+  const v2 = sigOf(Signer.sign("xna-pq-test", buildUnsignedHex(2, input, V3_PAYOUT), utxos, keys));
+  const v3Empty = sigOf(Signer.sign("xna-pq-test", buildUnsignedHex(3, input, V3_PAYOUT, []), utxos, keys));
+  const v3Ref = sigOf(Signer.sign("xna-pq-test", buildUnsignedHex(3, input, V3_PAYOUT, [V3_REF_A]), utxos, keys));
+
+  expect(v3Empty).not.toBe(v2);
+  expect(v3Ref).not.toBe(v3Empty);
+});
+
+test("v3 — OP_TXHASH cancel-PQ signature is invariant to vrefin (regression fixture)", () => {
+  const fx = buildPQCancelFixture({ selector: 0xff });
+  const base = CTcodec.parseTransaction(fx.rawUnsignedTx);
+
+  const signWithVrefin = (vrefin) => {
+    const raw = CTcodec.serializeTransaction({ ...base, version: 3, vrefin });
+    const signedHex = Signer.sign(fx.network, raw, [fx.utxo], fx.privateKeys);
+    return CTcodec.parseTransaction(signedHex);
+  };
+
+  const withEmpty = signWithVrefin([]);
+  const withRefs = signWithVrefin([V3_REF_A, V3_REF_B]);
+
+  // The OP_TXHASH selector bits (0x01..0x80) do not cover vrefin, so the
+  // CSFS message — and therefore the ML-DSA signature — must be identical…
+  expect(withRefs.inputs[0].witness[1]).toBe(withEmpty.inputs[0].witness[1]);
+  // …while the transactions themselves differ (vrefin is serialized and
+  // committed to the txid).
+  expect(withRefs.vrefin).toEqual([V3_REF_A, V3_REF_B]);
+  expect(CTcodec.computeTxid(withRefs)).not.toBe(CTcodec.computeTxid(withEmpty));
+
+  // And the v2 signature DOES differ from v3 (TXHASH_VERSION bit is set in
+  // selector 0xff).
+  const v2Signed = CTcodec.parseTransaction(
+    Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys)
+  );
+  expect(v2Signed.inputs[0].witness[1]).not.toBe(withEmpty.inputs[0].witness[1]);
+});
+
+test("v3 — NIP-025 also applies to v3 transactions", () => {
+  const raw = buildUnsignedHex(
+    3,
+    [{ txid: "aa".repeat(32), vout: 0, sequence: 0xfffffffd }],
+    V3_PAYOUT,
+    [V3_REF_A]
+  );
+  expect(() =>
+    Signer.sign("xna-pq-test", raw, [nip025Utxo(nip025AssetScriptHex(0x74))], NIP025_KEYS)
+  ).toThrow(/NIP-025/);
+});
+
+test("v3 — estimateVirtualSize accounts for vrefin", () => {
+  const inputs = [{ txid: "44".repeat(32), vout: 0 }];
+  const utxos = [{ address: "noauth-vault", assetName: "XNA", txid: "44".repeat(32), outputIndex: 0, script: NOAUTH_SIMPLE.script, satoshis: 100000, value: 100000 }];
+  const keys = { "noauth-vault": { authType: 0 } };
+
+  const rawEmpty = buildUnsignedHex(3, inputs, V3_PAYOUT, []);
+  const rawRefs = buildUnsignedHex(3, inputs, V3_PAYOUT, [V3_REF_A, V3_REF_B]);
+
+  const estEmpty = Signer.estimateVirtualSize("xna-pq-test", rawEmpty, utxos);
+  const estRefs = Signer.estimateVirtualSize("xna-pq-test", rawRefs, utxos);
+  // Two references = 72 extra non-witness bytes.
+  expect(estRefs - estEmpty).toBe(72);
+
+  const actual = CTcodec.estimateTransactionSize(
+    Signer.sign("xna-pq-test", rawRefs, utxos, keys)
+  ).vsize;
+  // NoAuth dummy witness (PQ worst case) >= the real OP_TRUE NoAuth spend.
+  expect(estRefs).toBeGreaterThanOrEqual(actual);
+});
+
+test("v3 — rejects a vrefin reference that overlaps a transaction input", () => {
+  const raw = buildUnsignedHex(
+    3,
+    [{ txid: "44".repeat(32), vout: 0 }],
+    V3_PAYOUT,
+    [{ txid: "44".repeat(32), vout: 0 }] // same outpoint as the input
+  );
+  expect(() =>
+    Signer.sign(
+      "xna-pq-test",
+      raw,
+      [{ address: "noauth-vault", assetName: "XNA", txid: "44".repeat(32), outputIndex: 0, script: NOAUTH_SIMPLE.script, satoshis: 100000, value: 100000 }],
+      { "noauth-vault": { authType: 0 } }
+    )
+  ).toThrow(/bad-txns-vrefin-overlap-vin/);
+});
+
+test("v3 — rejects a duplicated vrefin reference", () => {
+  const raw = buildUnsignedHex(
+    3,
+    [{ txid: "44".repeat(32), vout: 0 }],
+    V3_PAYOUT,
+    [V3_REF_A, V3_REF_A] // same { txid, vout } twice
+  );
+  expect(() =>
+    Signer.sign(
+      "xna-pq-test",
+      raw,
+      [{ address: "noauth-vault", assetName: "XNA", txid: "44".repeat(32), outputIndex: 0, script: NOAUTH_SIMPLE.script, satoshis: 100000, value: 100000 }],
+      { "noauth-vault": { authType: 0 } }
+    )
+  ).toThrow(/bad-txns-vrefin-duplicate/);
+});
