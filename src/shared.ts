@@ -4,6 +4,10 @@ import { ECPairFactory } from "ecpair";
 import * as ecc from "@bitcoinerlab/secp256k1";
 import { ml_dsa44 } from "@noble/post-quantum/ml-dsa.js";
 import {
+  buildAuthScriptWitnessNoAuth,
+  buildCancelWitnessStack,
+  buildCancelWitnessStackPQ,
+  buildFillWitnessStack,
   parsePartialFillScript,
   parsePartialFillScriptPQ,
   splitAssetWrappedScriptPubKey,
@@ -102,18 +106,25 @@ type PQChainNetwork = {
 };
 
 /**
- * Hint that unlocks signing of a partial-fill covenant cancel. Covenant
+ * Hint that unlocks spending of a partial-fill covenant branch. Covenant
  * UTXOs on-chain are always AuthScript-v1 witness wrapped (consensus
  * `IsAssetScript` only accepts 25-byte P2PKH or 34-byte AuthScript-v1
  * prefixes before an OP_XNA_ASSET wrapper), so the covenant itself lives
  * in the spend WITNESS, not in the scriptPubKey. Callers must supply the
  * covenant bytes in `covenantScriptHex`; the library verifies that
  * `taggedHash("NeuraiAuthScript", 0x01 || 0x00 || SHA256(covenantScript))`
- * matches the 32-byte program in the prevout before signing.
+ * matches the 32-byte program in the prevout before spending.
+ *
+ * `covenant-fill` needs no signature and therefore no private key. The
+ * order total is NEVER taken from the caller: it is derived from the
+ * prevout's transfer asset wrapper (`amountRaw`), the on-chain source of
+ * truth, so the full/partial branch choice cannot be corrupted by a wrong
+ * total. `amount` is the raw (satoshi-scaled) asset quantity to fill.
  */
 export type BareScriptSigningHint =
   | { kind: "covenant-cancel-legacy"; covenantScriptHex: string }
-  | { kind: "covenant-cancel-pq"; covenantScriptHex: string };
+  | { kind: "covenant-cancel-pq"; covenantScriptHex: string }
+  | { kind: "covenant-fill"; covenantScriptHex: string; amount: bigint };
 
 export interface IUTXO {
   address: string;
@@ -177,6 +188,13 @@ function bufferFromHex(value: string, label: string): Buffer {
   return Buffer.from(value, "hex");
 }
 
+function toBigIntAmount(value: unknown, label: string): bigint {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isSafeInteger(value)) return BigInt(value);
+  if (typeof value === "string" && /^\d+$/.test(value)) return BigInt(value);
+  throw new Error(`${label} must be a bigint (or a safe integer / decimal string)`);
+}
+
 function isLegacyScript(script: Buffer): boolean {
   return (
     script.length >= LEGACY_PREFIX_LENGTH &&
@@ -195,6 +213,77 @@ function isPQScript(script: Buffer): boolean {
     script[1] === 0x20
   );
 }
+
+// NIP-025: asset payload marker "rvn" + type. The marker is still the
+// Ravencoin-inherited one (NIP-040 migration to "xna" is pending).
+const XNA_ASSET_PAYLOAD_MARKER = Buffer.from("rvn", "ascii");
+// 't' transfer, 'q' new, 'o' owner, 'r' reissue (assets.h:19-23).
+const XNA_ASSET_TYPE_MARKERS = new Set([0x74, 0x71, 0x6f, 0x72]);
+
+/**
+ * Mirror of the node's `IsAssetAuthScript()` predicate (strict AuthScript
+ * asset parser, script.cpp:340-378): AuthScript-v1 prefix (34 B), then
+ * `OP_XNA_ASSET` exactly at offset 34, then ONE pushdata element decoded
+ * with Script push semantics (direct push / OP_PUSHDATA1/2/4, lengths
+ * validated) whose payload starts with "rvn" + a valid type marker, then a
+ * final OP_DROP as the script's last byte.
+ *
+ * Deliberately NOT a generic byte search: a 0xc0 inside push data must not
+ * count as a wrapper.
+ */
+function isAssetAuthScript(scriptPubKey: Buffer): boolean {
+  if (!isPQScript(scriptPubKey)) return false;
+
+  let offset = AUTHSCRIPT_PREFIX_LENGTH;
+  if (scriptPubKey.length <= offset || scriptPubKey[offset] !== OP_XNA_ASSET) {
+    return false;
+  }
+  offset += 1;
+
+  if (offset >= scriptPubKey.length) return false;
+  const op = scriptPubKey[offset];
+  offset += 1;
+
+  let payloadLength: number;
+  if (op > 0 && op < bitcoin.opcodes.OP_PUSHDATA1) {
+    payloadLength = op;
+  } else if (op === bitcoin.opcodes.OP_PUSHDATA1) {
+    if (offset + 1 > scriptPubKey.length) return false;
+    payloadLength = scriptPubKey[offset];
+    offset += 1;
+  } else if (op === bitcoin.opcodes.OP_PUSHDATA2) {
+    if (offset + 2 > scriptPubKey.length) return false;
+    payloadLength = scriptPubKey.readUInt16LE(offset);
+    offset += 2;
+  } else if (op === bitcoin.opcodes.OP_PUSHDATA4) {
+    if (offset + 4 > scriptPubKey.length) return false;
+    payloadLength = scriptPubKey.readUInt32LE(offset);
+    offset += 4;
+  } else {
+    return false;
+  }
+
+  if (offset + payloadLength > scriptPubKey.length) return false;
+  const payload = scriptPubKey.subarray(offset, offset + payloadLength);
+  offset += payloadLength;
+
+  if (payload.length < 4) return false;
+  if (!payload.subarray(0, 3).equals(XNA_ASSET_PAYLOAD_MARKER)) return false;
+  if (!XNA_ASSET_TYPE_MARKERS.has(payload[3])) return false;
+
+  return (
+    offset === scriptPubKey.length - 1 &&
+    scriptPubKey[offset] === bitcoin.opcodes.OP_DROP
+  );
+}
+
+// NIP-025 (`nASSETRBFBlockEnabled`) is a hard-coded per-network opt-in in
+// the node: true on testnet/regtest, false on mainnet
+// (chainparams.cpp:135,351,568). Regtest shares the testnet networks here.
+// Revisit this set when a mainnet fork activates the rule.
+const NETWORKS_WITH_ASSET_AUTHSCRIPT_RBF_BLOCK: ReadonlySet<SupportedNetwork> =
+  new Set(["xna-test", "xna-legacy-test", "xna-pq-test"]);
+const MIN_NON_RBF_SEQUENCE = 0xfffffffe;
 
 function getAuthScriptProgram(scriptPubKey: Buffer): Buffer {
   if (!isPQScript(scriptPubKey)) {
@@ -682,6 +771,41 @@ export function sign(
     tx.addOutput(out.script, out.value);
   }
 
+  // NIP-025: on networks where nASSETRBFBlockEnabled is active, a tx that
+  // spends any asset-AuthScript UTXO must have EVERY input opted out of
+  // RBF, or the node rejects it whole with
+  // bad-txns-asset-authscript-input-rbf (tx_verify.cpp:770-796). Failing
+  // here beats producing a signed tx the node is guaranteed to reject.
+  if (NETWORKS_WITH_ASSET_AUTHSCRIPT_RBF_BLOCK.has(network)) {
+    const triggering = tx.ins.find((input) => {
+      const { txid, vout } = getInputReference(input);
+      const inputUtxo = getUTXO(txid, vout);
+      if (
+        !inputUtxo ||
+        typeof inputUtxo.script !== "string" ||
+        inputUtxo.script.length === 0
+      ) {
+        return false;
+      }
+      return isAssetAuthScript(Buffer.from(inputUtxo.script, "hex"));
+    });
+    if (triggering) {
+      const offending = tx.ins
+        .map((input, idx) => ({ idx, sequence: input.sequence }))
+        .filter(({ sequence }) => sequence < MIN_NON_RBF_SEQUENCE);
+      if (offending.length > 0) {
+        const { txid, vout } = getInputReference(triggering);
+        throw new Error(
+          `NIP-025: input ${txid}:${vout} spends an asset AuthScript UTXO, so every input must have nSequence >= 0x${MIN_NON_RBF_SEQUENCE.toString(16)} ` +
+            `(the node rejects the whole tx with bad-txns-asset-authscript-input-rbf). Offending inputs: ` +
+            offending
+              .map((o) => `#${o.idx} (0x${o.sequence.toString(16)})`)
+              .join(", ")
+        );
+      }
+    }
+  }
+
   for (let i = 0; i < tx.ins.length; i++) {
     const input = tx.ins[i];
     const { txid, vout } = getInputReference(input);
@@ -718,11 +842,16 @@ export function sign(
 
     const hint = utxo.bareScriptHint;
 
-    // Covenant cancel branches: the prevout is AuthScript-v1-wrapped
+    // Covenant branches: the prevout is AuthScript-v1-wrapped
     // (commitment-to-covenant), so `inputIsPQ` is true. The hint tells
-    // the library the covenant witness script to use and the flavour
-    // (legacy ECDSA or PQ CSFS) of the cancel signature.
-    if (inputIsPQ && (hint?.kind === "covenant-cancel-legacy" || hint?.kind === "covenant-cancel-pq")) {
+    // the library the covenant witness script to use and the branch to
+    // take: fill (no signature) or cancel (legacy ECDSA or PQ CSFS).
+    if (
+      inputIsPQ &&
+      (hint?.kind === "covenant-cancel-legacy" ||
+        hint?.kind === "covenant-cancel-pq" ||
+        hint?.kind === "covenant-fill")
+    ) {
       // Common verification: AuthScript-NOAUTH commitment must match the
       // 32-byte program in the prevout. `scriptPubKey` may be either bare
       // AuthScript v1 (34 bytes) or AuthScript v1 + asset wrapper — both
@@ -739,6 +868,75 @@ export function sign(
         throw new Error(
           `${hint.kind} commitment mismatch for ${txid}:${vout}: hint.covenantScriptHex does not hash to the UTXO's AuthScript commitment`
         );
+      }
+
+      if (hint.kind === "covenant-fill") {
+        // A NOAUTH commitment match alone must not let an arbitrary
+        // witness script be spent "as a fill": the covenant has to parse
+        // as a partial-fill order (legacy or PQ).
+        let parsesAsPartialFill = false;
+        try {
+          parsePartialFillScript(hint.covenantScriptHex);
+          parsesAsPartialFill = true;
+        } catch {
+          try {
+            parsePartialFillScriptPQ(hint.covenantScriptHex);
+            parsesAsPartialFill = true;
+          } catch {
+            // fall through
+          }
+        }
+        if (!parsesAsPartialFill) {
+          throw new Error(
+            `covenant-fill covenantScriptHex for ${txid}:${vout} is not a partial-fill covenant (neither legacy nor PQ)`
+          );
+        }
+
+        // The order total comes from the prevout's transfer wrapper, never
+        // from the caller: a wrong total would silently pick the wrong
+        // full/partial branch.
+        let assetTransfer;
+        try {
+          assetTransfer = splitAssetWrappedScriptPubKey(utxo.script).assetTransfer;
+        } catch (err) {
+          throw new Error(
+            `covenant-fill for ${txid}:${vout}: cannot parse the prevout asset wrapper: ${(err as Error).message}`
+          );
+        }
+        if (!assetTransfer) {
+          throw new Error(
+            `covenant-fill for ${txid}:${vout}: prevout carries no transfer asset wrapper; the order total cannot be derived`
+          );
+        }
+        const total = assetTransfer.amountRaw;
+        const fillAmount = toBigIntAmount(
+          hint.amount,
+          `covenant-fill amount for ${txid}:${vout}`
+        );
+
+        let fillArgs: Uint8Array[];
+        try {
+          fillArgs = buildFillWitnessStack(fillAmount, total);
+        } catch (err) {
+          throw new Error(
+            `covenant-fill for ${txid}:${vout}: ${(err as Error).message}`
+          );
+        }
+        const witnessStack = buildAuthScriptWitnessNoAuth({
+          args: fillArgs,
+          witnessScript: covenantScriptBytes,
+        }).map((item) => Buffer.from(item));
+        tx.setInputScript(i, Buffer.alloc(0));
+        tx.setWitness(i, witnessStack);
+        debug({
+          step: "covenant-fill-witness-set",
+          i,
+          amount: fillAmount.toString(),
+          total: total.toString(),
+          assetName: assetTransfer.assetName,
+          fullFill: fillAmount === total,
+        });
+        continue;
       }
 
       if (!hasPrivateKeyForAddress(utxo.address)) {
@@ -782,13 +980,13 @@ export function sign(
           Buffer.from(rawSignature),
           HASH_TYPE
         );
-        const witnessStack = [
-          Buffer.from([NOAUTH_TYPE]),
-          signatureWithHashType,
-          Buffer.from(keyPair.publicKey),
-          Buffer.from([0x01]), // selects OP_IF cancel branch
-          covenantScriptBytes,
-        ];
+        const witnessStack = buildAuthScriptWitnessNoAuth({
+          args: buildCancelWitnessStack(
+            signatureWithHashType,
+            Buffer.from(keyPair.publicKey)
+          ),
+          witnessScript: covenantScriptBytes,
+        }).map((item) => Buffer.from(item));
         tx.setInputScript(i, Buffer.alloc(0));
         tx.setWitness(i, witnessStack);
         debug({
@@ -833,13 +1031,13 @@ export function sign(
         Buffer.from(rawSig),
         Buffer.from([HASH_TYPE]),
       ]);
-      const witnessStack = [
-        Buffer.from([NOAUTH_TYPE]),
-        sigWithHashType,
-        pqMaterial.serializedPublicKey,
-        Buffer.from([0x01]),
-        covenantScriptBytes,
-      ];
+      const witnessStack = buildAuthScriptWitnessNoAuth({
+        args: buildCancelWitnessStackPQ(
+          sigWithHashType,
+          pqMaterial.serializedPublicKey
+        ),
+        witnessScript: covenantScriptBytes,
+      }).map((item) => Buffer.from(item));
       tx.setInputScript(i, Buffer.alloc(0));
       tx.setWitness(i, witnessStack);
       debug({

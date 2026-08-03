@@ -1,6 +1,6 @@
 import * as bitcoin from "bitcoinjs-lib";
 import { Buffer } from "buffer";
-import type { IUTXO, SupportedNetwork } from "./shared";
+import type { BareScriptSigningHint, IUTXO, SupportedNetwork } from "./shared";
 
 // Worst-case witness item sizes for a PQ AuthScript spend with the default
 // OP_TRUE witnessScript and no functional args. These match the witness stack
@@ -179,7 +179,12 @@ export function estimateVirtualSize(
 
     if (isPQScript(utxo.script)) {
       tx.setInputScript(i, Buffer.alloc(0));
-      tx.setWitness(i, dummyPQWitness());
+      tx.setWitness(
+        i,
+        utxo.bareScriptHint
+          ? dummyCovenantWitness(utxo.bareScriptHint)
+          : dummyPQWitness()
+      );
     } else {
       tx.setInputScript(i, dummyLegacyScriptSig());
     }
@@ -207,4 +212,43 @@ function dummyPQWitness(): Buffer[] {
     Buffer.alloc(PQ_SERIALIZED_PUBKEY_BYTES),
     Buffer.alloc(PQ_DEFAULT_WITNESS_SCRIPT_BYTES),
   ];
+}
+
+// Worst-case CScriptNum for an int64 fill amount: 8 value bytes + 1 sign pad.
+const FILL_AMOUNT_MAX_BYTES = 9;
+
+/**
+ * Worst-case witness stack for a covenant spend driven by a
+ * `bareScriptHint`. The covenant itself travels in the witness, so its
+ * exact size is known from the hint; only the unlock args vary per branch.
+ */
+function dummyCovenantWitness(hint: BareScriptSigningHint): Buffer[] {
+  const covenant = Buffer.alloc(hint.covenantScriptHex.length / 2);
+  switch (hint.kind) {
+    case "covenant-fill":
+      // Partial fill is the worst case: [<0x00>, <N>, <0>, <0>, covenant].
+      return [
+        Buffer.alloc(PQ_AUTH_TYPE_BYTES),
+        Buffer.alloc(FILL_AMOUNT_MAX_BYTES),
+        Buffer.alloc(0),
+        Buffer.alloc(0),
+        covenant,
+      ];
+    case "covenant-cancel-legacy":
+      return [
+        Buffer.alloc(PQ_AUTH_TYPE_BYTES),
+        Buffer.alloc(LEGACY_SIGNATURE_BYTES),
+        Buffer.alloc(LEGACY_PUBKEY_BYTES),
+        Buffer.alloc(1),
+        covenant,
+      ];
+    case "covenant-cancel-pq":
+      return [
+        Buffer.alloc(PQ_AUTH_TYPE_BYTES),
+        Buffer.alloc(PQ_SIGNATURE_BYTES),
+        Buffer.alloc(PQ_SERIALIZED_PUBKEY_BYTES),
+        Buffer.alloc(1),
+        covenant,
+      ];
+  }
 }

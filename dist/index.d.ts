@@ -18,14 +18,20 @@ interface ISignOptions {
     debug?: boolean | ((event: ISignDebugEvent) => void);
 }
 /**
- * Hint that unlocks signing of a partial-fill covenant cancel. Covenant
+ * Hint that unlocks spending of a partial-fill covenant branch. Covenant
  * UTXOs on-chain are always AuthScript-v1 witness wrapped (consensus
  * `IsAssetScript` only accepts 25-byte P2PKH or 34-byte AuthScript-v1
  * prefixes before an OP_XNA_ASSET wrapper), so the covenant itself lives
  * in the spend WITNESS, not in the scriptPubKey. Callers must supply the
  * covenant bytes in `covenantScriptHex`; the library verifies that
  * `taggedHash("NeuraiAuthScript", 0x01 || 0x00 || SHA256(covenantScript))`
- * matches the 32-byte program in the prevout before signing.
+ * matches the 32-byte program in the prevout before spending.
+ *
+ * `covenant-fill` needs no signature and therefore no private key. The
+ * order total is NEVER taken from the caller: it is derived from the
+ * prevout's transfer asset wrapper (`amountRaw`), the on-chain source of
+ * truth, so the full/partial branch choice cannot be corrupted by a wrong
+ * total. `amount` is the raw (satoshi-scaled) asset quantity to fill.
  */
 type BareScriptSigningHint = {
     kind: "covenant-cancel-legacy";
@@ -33,6 +39,10 @@ type BareScriptSigningHint = {
 } | {
     kind: "covenant-cancel-pq";
     covenantScriptHex: string;
+} | {
+    kind: "covenant-fill";
+    covenantScriptHex: string;
+    amount: bigint;
 };
 interface IUTXO {
     address: string;

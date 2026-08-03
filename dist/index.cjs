@@ -13590,7 +13590,12 @@ const bitcoin = {
 };
 
 //#region src/storages/globalConfig/globalConfig.ts
-let store$4;
+const DEFAULT_CONFIG = {
+	lang: void 0,
+	message: void 0,
+	abortEarly: void 0,
+	abortPipeEarly: void 0
+};
 /**
 * Returns the global configuration.
 *
@@ -13600,12 +13605,7 @@ let store$4;
 */
 /* @__NO_SIDE_EFFECTS__ */
 function getGlobalConfig(config$1) {
-	return {
-		lang: config$1?.lang ?? store$4?.lang,
-		message: config$1?.message,
-		abortEarly: config$1?.abortEarly ?? store$4?.abortEarly,
-		abortPipeEarly: config$1?.abortPipeEarly ?? store$4?.abortPipeEarly
-	};
+	return DEFAULT_CONFIG;
 }
 
 //#endregion
@@ -13715,6 +13715,7 @@ function _addIssue(context, label, dataset, config$1, other) {
 
 //#endregion
 //#region src/utils/_getStandardProps/_getStandardProps.ts
+const _standardCache = /* @__PURE__ */ new WeakMap();
 /**
 * Returns the Standard Schema properties.
 *
@@ -13724,13 +13725,18 @@ function _addIssue(context, label, dataset, config$1, other) {
 */
 /* @__NO_SIDE_EFFECTS__ */
 function _getStandardProps(context) {
-	return {
-		version: 1,
-		vendor: "valibot",
-		validate(value$1) {
-			return context["~run"]({ value: value$1 }, /* @__PURE__ */ getGlobalConfig());
-		}
-	};
+	let cached = _standardCache.get(context);
+	if (!cached) {
+		cached = {
+			version: 1,
+			vendor: "valibot",
+			validate(value$1) {
+				return context["~run"]({ value: value$1 }, /* @__PURE__ */ getGlobalConfig());
+			}
+		};
+		_standardCache.set(context, cached);
+	}
+	return cached;
 }
 
 //#endregion
@@ -14101,7 +14107,7 @@ function string(message$1) {
 /* @__NO_SIDE_EFFECTS__ */
 function _subIssues(datasets) {
 	let issues;
-	if (datasets) for (const dataset of datasets) if (issues) issues.push(...dataset.issues);
+	if (datasets) for (const dataset of datasets) if (issues) for (const issue of dataset.issues) issues.push(issue);
 	else issues = dataset.issues;
 	return issues;
 }
@@ -14160,7 +14166,7 @@ function union(options, message$1) {
 * @returns The parsed input.
 */
 function parse(schema, input, config$1) {
-	const dataset = schema["~run"]({ value: input }, /* @__PURE__ */ getGlobalConfig(config$1));
+	const dataset = schema["~run"]({ value: input }, /* @__PURE__ */ getGlobalConfig());
 	if (dataset.issues) throw new ValiError(dataset.issues);
 	return dataset.value;
 }
@@ -20978,6 +20984,9 @@ function bytesEqual(a, b) {
  */
 // ---------- Push values ----------
 const OP_0 = 0x00;
+const OP_PUSHDATA1 = 0x4c;
+const OP_PUSHDATA2 = 0x4d;
+const OP_PUSHDATA4 = 0x4e;
 const OP_1 = 0x51;
 const OP_2 = 0x52;
 const OP_IF = 0x63;
@@ -21005,6 +21014,7 @@ const OP_OUTPUTSCRIPT = 0xcd;
 // ---------- Asset introspection (DePIN-Test) ----------
 const OP_OUTPUTASSETFIELD = 0xce;
 const OP_INPUTASSETFIELD = 0xcf;
+const OP_XNA_ASSET$1 = 0xc0;
 // ---------- Output auth commitment introspection (NIP-023) ----------
 // Pushes the 32-byte AuthScript v1 commitment of a selected output's
 // scriptPubKey. Symmetric to TXFIELD_AUTHSCRIPT_COMMITMENT for inputs;
@@ -21019,6 +21029,100 @@ const OP_CHAINCONTEXT = 0xd7;
 // confirmation block height; MTP is the previous block's median time past.
 const CHAINCONTEXT_HEIGHT = 0x01;
 const CHAINCONTEXT_MTP = 0x02;
+
+/**
+ * Low-level Script assembler. Emits the exact byte layout expected by the
+ * Neurai interpreter: pushdata prefixes follow the same rules as Bitcoin
+ * (direct push for 1..75 bytes, OP_PUSHDATA1/2/4 otherwise), and integers
+ * are minimally-encoded as CScriptNum.
+ */
+/**
+ * Minimal CScriptNum encoding (Bitcoin consensus rules).
+ *
+ * - 0 → empty vector
+ * - 1..16 → single opcode OP_1..OP_16 (handled in `pushInt`, not here)
+ * - -1 → OP_1NEGATE (handled in `pushInt`)
+ * - otherwise: sign-magnitude little-endian, with a sign bit on the last byte
+ */
+function encodeScriptNum(value) {
+    let n = typeof value === 'bigint' ? value : BigInt(value);
+    if (n === 0n)
+        return new Uint8Array();
+    const negative = n < 0n;
+    if (negative)
+        n = -n;
+    const result = [];
+    while (n > 0n) {
+        result.push(Number(n & 0xffn));
+        n >>= 8n;
+    }
+    // If the most-significant bit is set, add a padding byte so the sign bit
+    // is unambiguous. If negative, flip that sign bit instead.
+    if (result[result.length - 1] & 0x80) {
+        result.push(negative ? 0x80 : 0x00);
+    }
+    else if (negative) {
+        result[result.length - 1] |= 0x80;
+    }
+    return Uint8Array.from(result);
+}
+
+/**
+ * AuthScript (witness v1) scriptPubKey + witness-stack builders.
+ *
+ * AuthScript outputs encode a 32-byte commitment in a witness v1 program:
+ *   scriptPubKey = OP_1 0x20 <32-byte program>
+ *
+ * The program is `HASH160`/`SHA256` over a descriptor that depends on the
+ * `auth_type` byte carried as the first witness-stack element at spend time.
+ * This library only assembles the stack; computing the descriptor/commitment
+ * and producing the signature live in neurai-key / neurai-sign-transaction.
+ *
+ * Auth type values (authoritative: Neurai `src/script/interpreter.cpp`,
+ * cross-checked against `lib/neurai-key/src/shared/address.ts`):
+ *
+ *   0x00  NoAuth         — no signature; spend gated only by witnessScript
+ *   0x01  PQ             — ML-DSA-44 signature (post-quantum)
+ *   0x02  Legacy         — secp256k1 ECDSA signature (classic)
+ *   0x03  RefScript      — NIP-015 reference-script spend (future)
+ *
+ * Witness stack (exact order consumed by the interpreter):
+ *   [ auth_type, sig, pubkey, arg0, ..., argN, witnessScript ]
+ *
+ * NoAuth and RefScript spends omit the `sig`/`pubkey` items.
+ */
+const AUTHSCRIPT_NOAUTH = 0x00;
+function assertWitnessScript(ws) {
+    if (!(ws instanceof Uint8Array) || ws.length === 0) {
+        throw new Error('witnessScript must be a non-empty Uint8Array');
+    }
+}
+function assertArgs(args) {
+    if (args == null)
+        return;
+    if (!Array.isArray(args)) {
+        throw new Error('args must be an array of Uint8Array');
+    }
+    for (let i = 0; i < args.length; i += 1) {
+        if (!(args[i] instanceof Uint8Array)) {
+            throw new Error(`args[${i}] must be a Uint8Array`);
+        }
+    }
+}
+/**
+ * Build the witness stack for a NoAuth AuthScript spend. The spend is gated
+ * by the witnessScript alone (covenants, hash-locks, time-locks, ...); no
+ * signature or public key is carried.
+ */
+function buildAuthScriptWitnessNoAuth(input) {
+    assertArgs(input.args);
+    assertWitnessScript(input.witnessScript);
+    return [
+        Uint8Array.of(AUTHSCRIPT_NOAUTH),
+        ...(input.args ?? []),
+        input.witnessScript
+    ];
+}
 
 // base-x encoding / decoding
 // Copyright (c) 2018 base-x contributors
@@ -21353,7 +21457,178 @@ requireDist();
  * Bare (non-wrapped) scriptPubKeys round-trip through this helper by
  * returning `prefixHex === input` and `assetTransfer === null`.
  */
-Uint8Array.from([0x72, 0x76, 0x6e]); // "rvn"
+const RVN_MAGIC = Uint8Array.from([0x72, 0x76, 0x6e]); // "rvn"
+const TRANSFER_TYPE = 0x74;
+/**
+ * Walk the script one opcode at a time, skipping pushdata payload bytes,
+ * until either OP_XNA_ASSET is reached at top level or the end of the
+ * script. Returns the byte offset of OP_XNA_ASSET, or -1 if not found.
+ * Throws on truncated pushdata.
+ */
+function findTopLevelAssetOpcode(bytes) {
+    let i = 0;
+    while (i < bytes.length) {
+        const op = bytes[i];
+        if (op === OP_XNA_ASSET$1)
+            return i;
+        // Short direct push: 0x01..0x4b
+        if (op >= 0x01 && op <= 0x4b) {
+            const len = op;
+            const next = i + 1 + len;
+            if (next > bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: short push of ${len} bytes at offset ${i} exceeds script length`);
+            }
+            i = next;
+            continue;
+        }
+        if (op === OP_PUSHDATA1) {
+            if (i + 1 >= bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA1 length at offset ${i}`);
+            }
+            const len = bytes[i + 1];
+            const next = i + 2 + len;
+            if (next > bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA1 of ${len} bytes at offset ${i} exceeds script length`);
+            }
+            i = next;
+            continue;
+        }
+        if (op === OP_PUSHDATA2) {
+            if (i + 2 >= bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA2 length at offset ${i}`);
+            }
+            const len = bytes[i + 1] | (bytes[i + 2] << 8);
+            const next = i + 3 + len;
+            if (next > bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA2 of ${len} bytes at offset ${i} exceeds script length`);
+            }
+            i = next;
+            continue;
+        }
+        if (op === OP_PUSHDATA4) {
+            if (i + 4 >= bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: truncated PUSHDATA4 length at offset ${i}`);
+            }
+            const len = (bytes[i + 1] |
+                (bytes[i + 2] << 8) |
+                (bytes[i + 3] << 16) |
+                (bytes[i + 4] << 24)) >>>
+                0;
+            const next = i + 5 + len;
+            if (next > bytes.length) {
+                throw new Error(`splitAssetWrappedScriptPubKey: PUSHDATA4 of ${len} bytes at offset ${i} exceeds script length`);
+            }
+            i = next;
+            continue;
+        }
+        // Any other opcode (including OP_1..OP_16, OP_DUP, OP_HASH160, etc.) is
+        // one byte wide in Neurai Script. Advance.
+        i += 1;
+    }
+    return -1;
+}
+/**
+ * Read the pushdata element that sits immediately after OP_XNA_ASSET and
+ * return its payload bytes together with the cursor position after the
+ * element. Only direct pushes (1..75) and PUSHDATA1 are accepted — a
+ * well-formed asset transfer payload fits within 75 bytes for the common
+ * case and comfortably within 255 bytes even with long names and tails.
+ * PUSHDATA2 and PUSHDATA4 would signal a malformed or adversarial wrapper.
+ */
+function readPayloadPush(bytes, start) {
+    if (start >= bytes.length) {
+        throw new Error('splitAssetWrappedScriptPubKey: truncated wrapper — missing payload push');
+    }
+    const op = bytes[start];
+    if (op >= 0x01 && op <= 0x4b) {
+        const len = op;
+        const dataStart = start + 1;
+        const dataEnd = dataStart + len;
+        if (dataEnd > bytes.length) {
+            throw new Error(`splitAssetWrappedScriptPubKey: asset payload short push of ${len} bytes exceeds script length`);
+        }
+        return { payload: bytes.slice(dataStart, dataEnd), after: dataEnd };
+    }
+    if (op === OP_PUSHDATA1) {
+        if (start + 1 >= bytes.length) {
+            throw new Error('splitAssetWrappedScriptPubKey: truncated PUSHDATA1 in asset payload');
+        }
+        const len = bytes[start + 1];
+        const dataStart = start + 2;
+        const dataEnd = dataStart + len;
+        if (dataEnd > bytes.length) {
+            throw new Error(`splitAssetWrappedScriptPubKey: asset payload PUSHDATA1 of ${len} bytes exceeds script length`);
+        }
+        return { payload: bytes.slice(dataStart, dataEnd), after: dataEnd };
+    }
+    throw new Error(`splitAssetWrappedScriptPubKey: asset payload push opcode 0x${op.toString(16)} not accepted (expected 0x01..0x4b or PUSHDATA1)`);
+}
+function parseAssetTransferPayload(payload) {
+    if (payload.length < 4 + 1 + 8) {
+        // 4 magic+type, 1 varstr length, 8 int64LE amount
+        throw new Error(`splitAssetWrappedScriptPubKey: asset payload of ${payload.length} bytes is too short`);
+    }
+    for (let i = 0; i < 3; i += 1) {
+        if (payload[i] !== RVN_MAGIC[i]) {
+            throw new Error(`splitAssetWrappedScriptPubKey: asset payload magic mismatch — expected "rvn" got 0x${payload[0].toString(16)} 0x${payload[1].toString(16)} 0x${payload[2].toString(16)}`);
+        }
+    }
+    if (payload[3] !== TRANSFER_TYPE) {
+        throw new Error(`splitAssetWrappedScriptPubKey: asset payload type marker 0x${payload[3].toString(16)} is not a transfer (0x74)`);
+    }
+    const nameLen = payload[4];
+    const nameStart = 5;
+    const nameEnd = nameStart + nameLen;
+    if (nameEnd + 8 > payload.length) {
+        throw new Error(`splitAssetWrappedScriptPubKey: asset payload truncated — name length ${nameLen} does not leave room for amount`);
+    }
+    let assetName = '';
+    for (let i = nameStart; i < nameEnd; i += 1) {
+        assetName += String.fromCharCode(payload[i]);
+    }
+    let amountRaw = 0n;
+    for (let i = 0; i < 8; i += 1) {
+        amountRaw |= BigInt(payload[nameEnd + i]) << BigInt(8 * i);
+    }
+    // Any bytes after nameEnd + 8 form the optional tail (message +
+    // expireTime). We intentionally ignore them in this first version; the
+    // raw payload remains available via `payloadHex` if a consumer later
+    // needs to inspect them.
+    return { assetName, amountRaw };
+}
+/**
+ * Parse an asset-transfer-wrapped scriptPubKey. Accepts both wrapped and
+ * bare forms. Throws on structural malformation (truncated pushdata,
+ * missing OP_DROP after payload, bad magic, unsupported pushdata width).
+ */
+function splitAssetWrappedScriptPubKey(spkHex) {
+    const normalized = ensureHex(spkHex, 'scriptPubKey');
+    const bytes = hexToBytes(normalized);
+    const assetOpAt = findTopLevelAssetOpcode(bytes);
+    if (assetOpAt < 0) {
+        return { prefixHex: normalized, assetTransfer: null };
+    }
+    const prefix = bytes.slice(0, assetOpAt);
+    const { payload, after } = readPayloadPush(bytes, assetOpAt + 1);
+    if (after >= bytes.length) {
+        throw new Error('splitAssetWrappedScriptPubKey: asset wrapper missing trailing OP_DROP');
+    }
+    if (bytes[after] !== OP_DROP) {
+        throw new Error(`splitAssetWrappedScriptPubKey: expected OP_DROP at offset ${after}, got 0x${bytes[after].toString(16)}`);
+    }
+    if (after + 1 !== bytes.length) {
+        throw new Error(`splitAssetWrappedScriptPubKey: ${bytes.length - after - 1} trailing bytes after OP_DROP`);
+    }
+    const { assetName, amountRaw } = parseAssetTransferPayload(payload);
+    return {
+        prefixHex: bytesToHex(prefix),
+        assetTransfer: {
+            assetName,
+            amountRaw,
+            payloadHex: bytesToHex(payload),
+        },
+    };
+}
 
 /**
  * Shared parsing primitives for strict covenant parsers. Each covenant
@@ -21528,6 +21803,87 @@ function assertSameExpiration(a, b, label) {
     if (a === undefined || b === undefined || a.mode !== b.mode || a.value !== b.value) {
         throw new Error(`parse: expiration differs between ${label}`);
     }
+}
+
+/**
+ * Witness-stack builders for the Partial-Fill Sell Order covenant.
+ *
+ * When the covenant lives behind an AuthScript commitment (the only
+ * asset-compatible deployment since the node's OP_XNA_ASSET placement rules
+ * — bare covenant outputs can no longer carry assets), the unlock data goes
+ * in the witness, not the scriptSig. The scriptSig builders in `spend.ts`
+ * return a serialized script that PUSHES the elements; a witness needs the
+ * elements THEMSELVES, one per stack slot, so those blobs cannot be reused
+ * as a single `args` entry.
+ *
+ * These builders return the raw `args` stack (bottom → top), mirroring the
+ * shapes documented in `spend.ts`:
+ *
+ *   Full fill:     [ <1>, <0> ]
+ *   Partial fill:  [ <N>, <0>, <0> ]
+ *   Cancel:        [ <sig>, <pubkey>, <1> ]
+ *
+ * Numbers are minimal CScriptNum stack values (0 = empty element). Wrap the
+ * result with `buildAuthScriptWitnessNoAuth({ args, witnessScript: covenant })`
+ * (from `standard/authscript.ts`) to get the final `[0x00, ...args, covenant]`
+ * witness.
+ */
+const MAX_PQ_SCRIPT_ELEMENT_SIZE = 3072;
+/**
+ * Witness `args` for the public fill branches. Same semantics and
+ * validations as `buildFillScriptSig`.
+ */
+function buildFillWitnessStack(amount, total) {
+    if (typeof amount !== 'bigint' || typeof total !== 'bigint') {
+        throw new Error('amount and total must be bigint');
+    }
+    if (amount <= 0n) {
+        throw new Error('fill amount must be > 0');
+    }
+    if (total <= 0n) {
+        throw new Error('total must be > 0');
+    }
+    if (amount > total) {
+        throw new Error('fill amount exceeds the covenant total');
+    }
+    if (amount === total) {
+        // Full fill: covenant drains entirely; buyer does not push N.
+        return [encodeScriptNum(1n), encodeScriptNum(0n)];
+    }
+    // Partial fill: N, then both flag values.
+    return [encodeScriptNum(amount), encodeScriptNum(0n), encodeScriptNum(0n)];
+}
+/**
+ * Witness `args` for the seller's ECDSA cancel branch. Same semantics and
+ * validations as `buildCancelScriptSig`.
+ */
+function buildCancelWitnessStack(signatureDer, pubKey) {
+    if (!(signatureDer instanceof Uint8Array) || signatureDer.length === 0) {
+        throw new Error('signatureDer must be a non-empty Uint8Array');
+    }
+    if (!(pubKey instanceof Uint8Array) || (pubKey.length !== 33 && pubKey.length !== 65)) {
+        throw new Error('pubKey must be a compressed (33B) or uncompressed (65B) secp256k1 key');
+    }
+    return [signatureDer, pubKey, encodeScriptNum(1n)];
+}
+/**
+ * Witness `args` for the seller's PQ (ML-DSA-44) cancel branch. Same
+ * semantics and validations as `buildCancelScriptSigPQ`.
+ */
+function buildCancelWitnessStackPQ(sigPQ, pubKey) {
+    if (!(sigPQ instanceof Uint8Array) || sigPQ.length === 0) {
+        throw new Error('sigPQ must be a non-empty Uint8Array');
+    }
+    if (sigPQ.length > MAX_PQ_SCRIPT_ELEMENT_SIZE) {
+        throw new Error(`sigPQ of ${sigPQ.length} bytes exceeds MAX_PQ_SCRIPT_ELEMENT_SIZE (${MAX_PQ_SCRIPT_ELEMENT_SIZE})`);
+    }
+    if (!(pubKey instanceof Uint8Array) || pubKey.length === 0) {
+        throw new Error('pubKey must be a non-empty Uint8Array');
+    }
+    if (pubKey.length > MAX_PQ_SCRIPT_ELEMENT_SIZE) {
+        throw new Error(`pubKey of ${pubKey.length} bytes exceeds MAX_PQ_SCRIPT_ELEMENT_SIZE (${MAX_PQ_SCRIPT_ELEMENT_SIZE})`);
+    }
+    return [sigPQ, pubKey, encodeScriptNum(1n)];
 }
 
 /**
@@ -22101,6 +22457,15 @@ function bufferFromHex(value, label) {
     }
     return bufferExports.Buffer.from(value, "hex");
 }
+function toBigIntAmount(value, label) {
+    if (typeof value === "bigint")
+        return value;
+    if (typeof value === "number" && Number.isSafeInteger(value))
+        return BigInt(value);
+    if (typeof value === "string" && /^\d+$/.test(value))
+        return BigInt(value);
+    throw new Error(`${label} must be a bigint (or a safe integer / decimal string)`);
+}
 function isLegacyScript(script) {
     return (script.length >= LEGACY_PREFIX_LENGTH &&
         script[0] === srcExports.opcodes.OP_DUP &&
@@ -22114,6 +22479,78 @@ function isPQScript$1(script) {
         script[0] === srcExports.opcodes.OP_1 &&
         script[1] === 0x20);
 }
+// NIP-025: asset payload marker "rvn" + type. The marker is still the
+// Ravencoin-inherited one (NIP-040 migration to "xna" is pending).
+const XNA_ASSET_PAYLOAD_MARKER = bufferExports.Buffer.from("rvn", "ascii");
+// 't' transfer, 'q' new, 'o' owner, 'r' reissue (assets.h:19-23).
+const XNA_ASSET_TYPE_MARKERS = new Set([0x74, 0x71, 0x6f, 0x72]);
+/**
+ * Mirror of the node's `IsAssetAuthScript()` predicate (strict AuthScript
+ * asset parser, script.cpp:340-378): AuthScript-v1 prefix (34 B), then
+ * `OP_XNA_ASSET` exactly at offset 34, then ONE pushdata element decoded
+ * with Script push semantics (direct push / OP_PUSHDATA1/2/4, lengths
+ * validated) whose payload starts with "rvn" + a valid type marker, then a
+ * final OP_DROP as the script's last byte.
+ *
+ * Deliberately NOT a generic byte search: a 0xc0 inside push data must not
+ * count as a wrapper.
+ */
+function isAssetAuthScript(scriptPubKey) {
+    if (!isPQScript$1(scriptPubKey))
+        return false;
+    let offset = AUTHSCRIPT_PREFIX_LENGTH;
+    if (scriptPubKey.length <= offset || scriptPubKey[offset] !== OP_XNA_ASSET) {
+        return false;
+    }
+    offset += 1;
+    if (offset >= scriptPubKey.length)
+        return false;
+    const op = scriptPubKey[offset];
+    offset += 1;
+    let payloadLength;
+    if (op > 0 && op < srcExports.opcodes.OP_PUSHDATA1) {
+        payloadLength = op;
+    }
+    else if (op === srcExports.opcodes.OP_PUSHDATA1) {
+        if (offset + 1 > scriptPubKey.length)
+            return false;
+        payloadLength = scriptPubKey[offset];
+        offset += 1;
+    }
+    else if (op === srcExports.opcodes.OP_PUSHDATA2) {
+        if (offset + 2 > scriptPubKey.length)
+            return false;
+        payloadLength = scriptPubKey.readUInt16LE(offset);
+        offset += 2;
+    }
+    else if (op === srcExports.opcodes.OP_PUSHDATA4) {
+        if (offset + 4 > scriptPubKey.length)
+            return false;
+        payloadLength = scriptPubKey.readUInt32LE(offset);
+        offset += 4;
+    }
+    else {
+        return false;
+    }
+    if (offset + payloadLength > scriptPubKey.length)
+        return false;
+    const payload = scriptPubKey.subarray(offset, offset + payloadLength);
+    offset += payloadLength;
+    if (payload.length < 4)
+        return false;
+    if (!payload.subarray(0, 3).equals(XNA_ASSET_PAYLOAD_MARKER))
+        return false;
+    if (!XNA_ASSET_TYPE_MARKERS.has(payload[3]))
+        return false;
+    return (offset === scriptPubKey.length - 1 &&
+        scriptPubKey[offset] === srcExports.opcodes.OP_DROP);
+}
+// NIP-025 (`nASSETRBFBlockEnabled`) is a hard-coded per-network opt-in in
+// the node: true on testnet/regtest, false on mainnet
+// (chainparams.cpp:135,351,568). Regtest shares the testnet networks here.
+// Revisit this set when a mainnet fork activates the rule.
+const NETWORKS_WITH_ASSET_AUTHSCRIPT_RBF_BLOCK = new Set(["xna-test", "xna-legacy-test", "xna-pq-test"]);
+const MIN_NON_RBF_SEQUENCE = 0xfffffffe;
 function getAuthScriptProgram(scriptPubKey) {
     if (!isPQScript$1(scriptPubKey)) {
         throw new Error("AuthScript scriptPubKey must start with OP_1 <32-byte commitment>");
@@ -22481,6 +22918,36 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
     for (const out of unsignedTx.outs) {
         tx.addOutput(out.script, out.value);
     }
+    // NIP-025: on networks where nASSETRBFBlockEnabled is active, a tx that
+    // spends any asset-AuthScript UTXO must have EVERY input opted out of
+    // RBF, or the node rejects it whole with
+    // bad-txns-asset-authscript-input-rbf (tx_verify.cpp:770-796). Failing
+    // here beats producing a signed tx the node is guaranteed to reject.
+    if (NETWORKS_WITH_ASSET_AUTHSCRIPT_RBF_BLOCK.has(network)) {
+        const triggering = tx.ins.find((input) => {
+            const { txid, vout } = getInputReference(input);
+            const inputUtxo = getUTXO(txid, vout);
+            if (!inputUtxo ||
+                typeof inputUtxo.script !== "string" ||
+                inputUtxo.script.length === 0) {
+                return false;
+            }
+            return isAssetAuthScript(bufferExports.Buffer.from(inputUtxo.script, "hex"));
+        });
+        if (triggering) {
+            const offending = tx.ins
+                .map((input, idx) => ({ idx, sequence: input.sequence }))
+                .filter(({ sequence }) => sequence < MIN_NON_RBF_SEQUENCE);
+            if (offending.length > 0) {
+                const { txid, vout } = getInputReference(triggering);
+                throw new Error(`NIP-025: input ${txid}:${vout} spends an asset AuthScript UTXO, so every input must have nSequence >= 0x${MIN_NON_RBF_SEQUENCE.toString(16)} ` +
+                    `(the node rejects the whole tx with bad-txns-asset-authscript-input-rbf). Offending inputs: ` +
+                    offending
+                        .map((o) => `#${o.idx} (0x${o.sequence.toString(16)})`)
+                        .join(", "));
+            }
+        }
+    }
     for (let i = 0; i < tx.ins.length; i++) {
         const input = tx.ins[i];
         const { txid, vout } = getInputReference(input);
@@ -22513,11 +22980,14 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
             isPQ: inputIsPQ,
         });
         const hint = utxo.bareScriptHint;
-        // Covenant cancel branches: the prevout is AuthScript-v1-wrapped
+        // Covenant branches: the prevout is AuthScript-v1-wrapped
         // (commitment-to-covenant), so `inputIsPQ` is true. The hint tells
-        // the library the covenant witness script to use and the flavour
-        // (legacy ECDSA or PQ CSFS) of the cancel signature.
-        if (inputIsPQ && (hint?.kind === "covenant-cancel-legacy" || hint?.kind === "covenant-cancel-pq")) {
+        // the library the covenant witness script to use and the branch to
+        // take: fill (no signature) or cancel (legacy ECDSA or PQ CSFS).
+        if (inputIsPQ &&
+            (hint?.kind === "covenant-cancel-legacy" ||
+                hint?.kind === "covenant-cancel-pq" ||
+                hint?.kind === "covenant-fill")) {
             // Common verification: AuthScript-NOAUTH commitment must match the
             // 32-byte program in the prevout. `scriptPubKey` may be either bare
             // AuthScript v1 (34 bytes) or AuthScript v1 + asset wrapper — both
@@ -22530,6 +23000,65 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
             const actualCommitment = scriptPubKey.subarray(2, AUTHSCRIPT_PREFIX_LENGTH);
             if (!expectedCommitment.equals(actualCommitment)) {
                 throw new Error(`${hint.kind} commitment mismatch for ${txid}:${vout}: hint.covenantScriptHex does not hash to the UTXO's AuthScript commitment`);
+            }
+            if (hint.kind === "covenant-fill") {
+                // A NOAUTH commitment match alone must not let an arbitrary
+                // witness script be spent "as a fill": the covenant has to parse
+                // as a partial-fill order (legacy or PQ).
+                let parsesAsPartialFill = false;
+                try {
+                    parsePartialFillScript(hint.covenantScriptHex);
+                    parsesAsPartialFill = true;
+                }
+                catch {
+                    try {
+                        parsePartialFillScriptPQ(hint.covenantScriptHex);
+                        parsesAsPartialFill = true;
+                    }
+                    catch {
+                        // fall through
+                    }
+                }
+                if (!parsesAsPartialFill) {
+                    throw new Error(`covenant-fill covenantScriptHex for ${txid}:${vout} is not a partial-fill covenant (neither legacy nor PQ)`);
+                }
+                // The order total comes from the prevout's transfer wrapper, never
+                // from the caller: a wrong total would silently pick the wrong
+                // full/partial branch.
+                let assetTransfer;
+                try {
+                    assetTransfer = splitAssetWrappedScriptPubKey(utxo.script).assetTransfer;
+                }
+                catch (err) {
+                    throw new Error(`covenant-fill for ${txid}:${vout}: cannot parse the prevout asset wrapper: ${err.message}`);
+                }
+                if (!assetTransfer) {
+                    throw new Error(`covenant-fill for ${txid}:${vout}: prevout carries no transfer asset wrapper; the order total cannot be derived`);
+                }
+                const total = assetTransfer.amountRaw;
+                const fillAmount = toBigIntAmount(hint.amount, `covenant-fill amount for ${txid}:${vout}`);
+                let fillArgs;
+                try {
+                    fillArgs = buildFillWitnessStack(fillAmount, total);
+                }
+                catch (err) {
+                    throw new Error(`covenant-fill for ${txid}:${vout}: ${err.message}`);
+                }
+                const witnessStack = buildAuthScriptWitnessNoAuth({
+                    args: fillArgs,
+                    witnessScript: covenantScriptBytes,
+                }).map((item) => bufferExports.Buffer.from(item));
+                tx.setInputScript(i, bufferExports.Buffer.alloc(0));
+                tx.setWitness(i, witnessStack);
+                debug({
+                    step: "covenant-fill-witness-set",
+                    i,
+                    amount: fillAmount.toString(),
+                    total: total.toString(),
+                    assetName: assetTransfer.assetName,
+                    fullFill: fillAmount === total,
+                });
+                continue;
             }
             if (!hasPrivateKeyForAddress(utxo.address)) {
                 throw new Error(`Missing private key for covenant cancel at ${txid}:${vout} (address ${utxo.address})`);
@@ -22555,13 +23084,10 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
                 const sighash = hashForAuthScript(tx, i, covenantScriptBytes, amount, HASH_TYPE, NOAUTH_TYPE);
                 const rawSignature = keyPair.sign(sighash);
                 const signatureWithHashType = srcExports.script.signature.encode(bufferExports.Buffer.from(rawSignature), HASH_TYPE);
-                const witnessStack = [
-                    bufferExports.Buffer.from([NOAUTH_TYPE]),
-                    signatureWithHashType,
-                    bufferExports.Buffer.from(keyPair.publicKey),
-                    bufferExports.Buffer.from([0x01]), // selects OP_IF cancel branch
-                    covenantScriptBytes,
-                ];
+                const witnessStack = buildAuthScriptWitnessNoAuth({
+                    args: buildCancelWitnessStack(signatureWithHashType, bufferExports.Buffer.from(keyPair.publicKey)),
+                    witnessScript: covenantScriptBytes,
+                }).map((item) => bufferExports.Buffer.from(item));
                 tx.setInputScript(i, bufferExports.Buffer.alloc(0));
                 tx.setWitness(i, witnessStack);
                 debug({
@@ -22598,13 +23124,10 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
                 bufferExports.Buffer.from(rawSig),
                 bufferExports.Buffer.from([HASH_TYPE]),
             ]);
-            const witnessStack = [
-                bufferExports.Buffer.from([NOAUTH_TYPE]),
-                sigWithHashType,
-                pqMaterial.serializedPublicKey,
-                bufferExports.Buffer.from([0x01]),
-                covenantScriptBytes,
-            ];
+            const witnessStack = buildAuthScriptWitnessNoAuth({
+                args: buildCancelWitnessStackPQ(sigWithHashType, pqMaterial.serializedPublicKey),
+                witnessScript: covenantScriptBytes,
+            }).map((item) => bufferExports.Buffer.from(item));
             tx.setInputScript(i, bufferExports.Buffer.alloc(0));
             tx.setWitness(i, witnessStack);
             debug({
@@ -22893,7 +23416,9 @@ function estimateVirtualSize(_network, rawTransactionHex, utxos) {
         }
         if (isPQScript(utxo.script)) {
             tx.setInputScript(i, bufferExports.Buffer.alloc(0));
-            tx.setWitness(i, dummyPQWitness());
+            tx.setWitness(i, utxo.bareScriptHint
+                ? dummyCovenantWitness(utxo.bareScriptHint)
+                : dummyPQWitness());
         }
         else {
             tx.setInputScript(i, dummyLegacyScriptSig());
@@ -22919,6 +23444,43 @@ function dummyPQWitness() {
         bufferExports.Buffer.alloc(PQ_SERIALIZED_PUBKEY_BYTES),
         bufferExports.Buffer.alloc(PQ_DEFAULT_WITNESS_SCRIPT_BYTES),
     ];
+}
+// Worst-case CScriptNum for an int64 fill amount: 8 value bytes + 1 sign pad.
+const FILL_AMOUNT_MAX_BYTES = 9;
+/**
+ * Worst-case witness stack for a covenant spend driven by a
+ * `bareScriptHint`. The covenant itself travels in the witness, so its
+ * exact size is known from the hint; only the unlock args vary per branch.
+ */
+function dummyCovenantWitness(hint) {
+    const covenant = bufferExports.Buffer.alloc(hint.covenantScriptHex.length / 2);
+    switch (hint.kind) {
+        case "covenant-fill":
+            // Partial fill is the worst case: [<0x00>, <N>, <0>, <0>, covenant].
+            return [
+                bufferExports.Buffer.alloc(PQ_AUTH_TYPE_BYTES),
+                bufferExports.Buffer.alloc(FILL_AMOUNT_MAX_BYTES),
+                bufferExports.Buffer.alloc(0),
+                bufferExports.Buffer.alloc(0),
+                covenant,
+            ];
+        case "covenant-cancel-legacy":
+            return [
+                bufferExports.Buffer.alloc(PQ_AUTH_TYPE_BYTES),
+                bufferExports.Buffer.alloc(LEGACY_SIGNATURE_BYTES),
+                bufferExports.Buffer.alloc(LEGACY_PUBKEY_BYTES),
+                bufferExports.Buffer.alloc(1),
+                covenant,
+            ];
+        case "covenant-cancel-pq":
+            return [
+                bufferExports.Buffer.alloc(PQ_AUTH_TYPE_BYTES),
+                bufferExports.Buffer.alloc(PQ_SIGNATURE_BYTES),
+                bufferExports.Buffer.alloc(PQ_SERIALIZED_PUBKEY_BYTES),
+                bufferExports.Buffer.alloc(1),
+                covenant,
+            ];
+    }
 }
 
 exports.VBYTES = VBYTES;

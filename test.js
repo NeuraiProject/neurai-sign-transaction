@@ -1595,3 +1595,299 @@ test("estimateVirtualSize handles a mixed legacy + PQ transaction", () => {
   expect(estimated).toBeGreaterThanOrEqual(actualVsize);
   expect(estimated - actualVsize).toBeLessThanOrEqual(3);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Covenant fill (v2.2.0 — plan fase 2)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The wrapped order total in buildLegacyCancelFixture is TREST 10000000000n.
+const FILL_ORDER_TOTAL = 10000000000n;
+
+function buildLegacyFillFixture(opts = {}) {
+  const sellerKeyPair = ECPairCancel.makeRandom({ network: XNA_TESTNET });
+  const base = buildLegacyCancelFixture({ sellerKeyPair });
+  return {
+    ...base,
+    utxo: {
+      ...base.utxo,
+      address: "covenant-order",
+      bareScriptHint: {
+        kind: "covenant-fill",
+        covenantScriptHex: opts.covenantScriptHex ?? base.covenantHex,
+        amount: opts.amount,
+      },
+    },
+  };
+}
+
+test("Covenant fill — full fill spends without signature or private key", () => {
+  const fx = buildLegacyFillFixture({ amount: FILL_ORDER_TOTAL });
+
+  // No private keys at all: the fill branch must not need one.
+  const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], {});
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+
+  expect(signedTx.ins[0].script.length).toBe(0);
+  const witness = signedTx.ins[0].witness;
+  expect(witness).toHaveLength(4); // [0x00, <1>, <>, covenant]
+  expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
+  expect(witness[1].equals(Buffer.from([0x01]))).toBe(true);
+  expect(witness[2].length).toBe(0);
+  expect(witness[3].equals(fx.covenantBytes)).toBe(true);
+});
+
+test("Covenant fill — partial fill pushes the CScriptNum amount", () => {
+  const amount = 2500000000n;
+  const fx = buildLegacyFillFixture({ amount });
+
+  const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], {});
+  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+
+  expect(witness).toHaveLength(5); // [0x00, <N>, <>, <>, covenant]
+  expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
+  expect(witness[1].equals(Buffer.from(NeuraiScripts.encodeScriptNum(amount)))).toBe(true);
+  expect(witness[2].length).toBe(0);
+  expect(witness[3].length).toBe(0);
+  expect(witness[4].equals(fx.covenantBytes)).toBe(true);
+
+  // Runtime normalization: a decimal-string amount signs identically.
+  const fxStr = { ...fx, utxo: { ...fx.utxo, bareScriptHint: { ...fx.utxo.bareScriptHint, amount: amount.toString() } } };
+  expect(Signer.sign(fxStr.network, fxStr.rawUnsignedTx, [fxStr.utxo], {})).toBe(signedHex);
+});
+
+test("Covenant fill — PQ partial-fill covenant is accepted", () => {
+  const base = buildPQCancelFixture({ selector: 0xff });
+  const utxo = {
+    ...base.utxo,
+    bareScriptHint: {
+      kind: "covenant-fill",
+      covenantScriptHex: base.covenantHex,
+      amount: FILL_ORDER_TOTAL,
+    },
+  };
+
+  const signedHex = Signer.sign(base.network, base.rawUnsignedTx, [utxo], {});
+  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+
+  expect(witness).toHaveLength(4);
+  expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
+  expect(witness[1].equals(Buffer.from([0x01]))).toBe(true);
+  expect(witness[3].equals(base.covenantBytes)).toBe(true);
+});
+
+test("Covenant fill — rejects amounts outside (0, wrapper total]", () => {
+  const above = buildLegacyFillFixture({ amount: FILL_ORDER_TOTAL + 1n });
+  expect(() => Signer.sign(above.network, above.rawUnsignedTx, [above.utxo], {}))
+    .toThrow(/exceeds the covenant total/);
+
+  const zero = buildLegacyFillFixture({ amount: 0n });
+  expect(() => Signer.sign(zero.network, zero.rawUnsignedTx, [zero.utxo], {}))
+    .toThrow(/must be > 0/);
+});
+
+test("Covenant fill — rejects when covenantScriptHex does not hash to the commitment", () => {
+  const fx = buildLegacyFillFixture({ amount: 1n });
+  const tampered = {
+    ...fx.utxo,
+    bareScriptHint: {
+      ...fx.utxo.bareScriptHint,
+      covenantScriptHex: fx.covenantHex.slice(0, -2) + "51",
+    },
+  };
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [tampered], {}))
+    .toThrow(/commitment mismatch/);
+});
+
+test("Covenant fill — rejects a non-partial-fill witness script even when the commitment matches", () => {
+  // OP_TRUE is a perfectly valid NOAUTH witness script — but it is NOT a
+  // partial-fill covenant, so a fill hint over it must be refused.
+  const arbitraryScript = Buffer.from([bitcoin.opcodes.OP_TRUE]);
+  const wrap = wrapCovenantScriptPubKey(arbitraryScript, "TREST", FILL_ORDER_TOTAL);
+  const prevTxid = Buffer.from("cc".repeat(32), "hex");
+  const tx = buildSpendTx(prevTxid, Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"));
+
+  const utxo = {
+    address: "fake-order",
+    assetName: "TREST",
+    txid: "cc".repeat(32),
+    outputIndex: 0,
+    script: wrap.wrappedSpkHex,
+    satoshis: 0,
+    value: 0,
+    bareScriptHint: {
+      kind: "covenant-fill",
+      covenantScriptHex: arbitraryScript.toString("hex"),
+      amount: 1n,
+    },
+  };
+
+  expect(() => Signer.sign("xna-test", tx.toHex(), [utxo], {}))
+    .toThrow(/not a partial-fill covenant/);
+});
+
+test("Covenant fill — rejects a prevout without a transfer asset wrapper", () => {
+  const fx = buildLegacyFillFixture({ amount: 1n });
+  const bareSpkHex = Buffer.concat([
+    Buffer.from([0x51, 0x20]),
+    authScriptNoAuthCommitment(fx.covenantBytes),
+  ]).toString("hex");
+  const bare = { ...fx.utxo, script: bareSpkHex };
+
+  expect(() => Signer.sign(fx.network, fx.rawUnsignedTx, [bare], {}))
+    .toThrow(/no transfer asset wrapper/);
+});
+
+test("estimateVirtualSize accounts for covenant hints (fill and cancel-PQ)", () => {
+  const fx = buildLegacyFillFixture({ amount: 2500000000n });
+  const estFill = Signer.estimateVirtualSize(fx.network, fx.rawUnsignedTx, [fx.utxo]);
+  const actualFill = bitcoin.Transaction.fromHex(
+    Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], {})
+  ).virtualSize();
+  expect(estFill).toBeGreaterThanOrEqual(actualFill);
+  expect(estFill - actualFill).toBeLessThanOrEqual(4);
+
+  const pq = buildPQCancelFixture({ selector: 0xff });
+  const estCancel = Signer.estimateVirtualSize(pq.network, pq.rawUnsignedTx, [pq.utxo]);
+  const actualCancel = bitcoin.Transaction.fromHex(
+    Signer.sign(pq.network, pq.rawUnsignedTx, [pq.utxo], pq.privateKeys)
+  ).virtualSize();
+  expect(estCancel).toBeGreaterThanOrEqual(actualCancel);
+  expect(estCancel - actualCancel).toBeLessThanOrEqual(3);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NIP-025 anti-RBF for asset AuthScript inputs (v2.2.0 — plan fase 4)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// NOAUTH_SIMPLE.script is the AuthScript-v1 commitment for the default
+// OP_TRUE NoAuth witness script — signable with just { authType: 0 }.
+function nip025AssetPayloadHex(typeMarker) {
+  const name = Buffer.from("TREST", "ascii");
+  const amt = Buffer.alloc(8);
+  amt.writeBigUInt64LE(10000000000n, 0);
+  return Buffer.concat([
+    Buffer.from("rvn", "ascii"),
+    Buffer.from([typeMarker]),
+    Buffer.from([name.length]),
+    name,
+    amt,
+  ]).toString("hex");
+}
+
+function nip025AssetScriptHex(typeMarker) {
+  return appendAssetWrapper(NOAUTH_SIMPLE.script, nip025AssetPayloadHex(typeMarker));
+}
+
+function buildNip025Tx(sequence) {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("aa".repeat(32), "hex").reverse(), 0, sequence);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 0);
+  return tx;
+}
+
+function nip025Utxo(scriptHex) {
+  return {
+    address: "noauth-asset-vault",
+    assetName: "TREST",
+    txid: "aa".repeat(32),
+    outputIndex: 0,
+    script: scriptHex,
+    satoshis: 0,
+    value: 0,
+  };
+}
+
+const NIP025_KEYS = { "noauth-asset-vault": { authType: 0 } };
+
+const NIP025_MARKERS = [
+  ["rvnt/transfer", 0x74],
+  ["rvnq/new", 0x71],
+  ["rvno/owner", 0x6f],
+  ["rvnr/reissue", 0x72],
+];
+
+for (const [label, marker] of NIP025_MARKERS) {
+  test(`NIP-025 — ${label} asset AuthScript rejects a low-sequence input`, () => {
+    const tx = buildNip025Tx(0xfffffffd);
+    expect(() =>
+      Signer.sign("xna-pq-test", tx.toHex(), [nip025Utxo(nip025AssetScriptHex(marker))], NIP025_KEYS)
+    ).toThrow(/NIP-025/);
+  });
+
+  test(`NIP-025 — ${label} asset AuthScript signs when every input opts out of RBF`, () => {
+    const tx = buildNip025Tx(0xfffffffe);
+    const signedHex = Signer.sign(
+      "xna-pq-test",
+      tx.toHex(),
+      [nip025Utxo(nip025AssetScriptHex(marker))],
+      NIP025_KEYS
+    );
+    const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+    expect(witness).toHaveLength(2);
+    expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
+  });
+}
+
+test("NIP-025 — a bare AuthScript prevout does NOT trigger the rule", () => {
+  const tx = buildNip025Tx(0); // aggressively RBF-able sequence
+  const signedHex = Signer.sign(
+    "xna-pq-test",
+    tx.toHex(),
+    [nip025Utxo(NOAUTH_SIMPLE.script)],
+    NIP025_KEYS
+  );
+  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  expect(witness).toHaveLength(2);
+});
+
+const NIP025_MALFORMED = [
+  ["payload without rvn magic", appendAssetWrapper(NOAUTH_SIMPLE.script, "78787874" + "02beef")],
+  ["unknown type marker", nip025AssetScriptHex(0x7a)],
+  ["missing final OP_DROP", nip025AssetScriptHex(0x74).slice(0, -2)],
+  ["truncated pushdata", NOAUTH_SIMPLE.script + "c0" + "4c50"],
+];
+
+for (const [label, scriptHex] of NIP025_MALFORMED) {
+  test(`NIP-025 — malformed wrapper (${label}) does not trigger the rule`, () => {
+    const tx = buildNip025Tx(0xfffffffd);
+    const signedHex = Signer.sign("xna-pq-test", tx.toHex(), [nip025Utxo(scriptHex)], NIP025_KEYS);
+    const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+    expect(witness).toHaveLength(2);
+  });
+}
+
+test("NIP-025 — a low sequence on a sibling legacy input is also rejected", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("aa".repeat(32), "hex").reverse(), 0, 0xffffffff);
+  tx.addInput(Buffer.from("bb".repeat(32), "hex").reverse(), 0, 0xfffffffd);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 0);
+
+  const utxos = [
+    nip025Utxo(nip025AssetScriptHex(0x74)),
+    {
+      address: "mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA",
+      assetName: "XNA",
+      txid: "bb".repeat(32),
+      outputIndex: 0,
+      script: "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac",
+      satoshis: 100000,
+      value: 100000,
+    },
+  ];
+
+  expect(() => Signer.sign("xna-pq-test", tx.toHex(), utxos, NIP025_KEYS)).toThrow(/NIP-025/);
+});
+
+test("NIP-025 — rule is inactive on mainnet networks", () => {
+  const tx = buildNip025Tx(0xfffffffd);
+  const signedHex = Signer.sign(
+    "xna-pq",
+    tx.toHex(),
+    [nip025Utxo(nip025AssetScriptHex(0x74))],
+    NIP025_KEYS
+  );
+  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  expect(witness).toHaveLength(2);
+});
