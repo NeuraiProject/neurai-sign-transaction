@@ -21439,10 +21439,15 @@ requireDist$1();
  * AuthScript witness v1, or a bare covenant such as the partial-fill sell
  * order), and `payload` serializes a `CAssetTransfer`:
  *
- *     payload = rvn_prefix (0x72 0x76 0x6e) || type_marker (0x74 transfer)
+ *     payload = marker ("rvn" 0x72 0x76 0x6e | "xna" 0x78 0x6e 0x61)
+ *             || type_marker (0x74 transfer)
  *             || VarStr(assetName)
  *             || int64LE(amountRaw)
  *             [ || messageRef (optional) || int64LE(expireTime) (optional) ]
+ *
+ * NIP-040: mainnet still emits the Ravencoin-inherited "rvn" marker;
+ * testnet/regtest emit "xna" after activation. Both are accepted when
+ * reading — the detected marker is surfaced on the parsed payload.
  *
  * This helper separates the two halves so consumers can validate the prefix
  * (e.g. feed it to `parsePartialFillScript`) while independently reading the
@@ -21453,7 +21458,10 @@ requireDist$1();
  * Bare (non-wrapped) scriptPubKeys round-trip through this helper by
  * returning `prefixHex === input` and `assetTransfer === null`.
  */
-const RVN_MAGIC = Uint8Array.from([0x72, 0x76, 0x6e]); // "rvn"
+const ASSET_MAGICS = [
+    { marker: 'rvn', bytes: Uint8Array.from([0x72, 0x76, 0x6e]) },
+    { marker: 'xna', bytes: Uint8Array.from([0x78, 0x6e, 0x61]) },
+];
 const TRANSFER_TYPE = 0x74;
 /**
  * Walk the script one opcode at a time, skipping pushdata payload bytes,
@@ -21559,16 +21567,20 @@ function readPayloadPush(bytes, start) {
     }
     throw new Error(`splitAssetWrappedScriptPubKey: asset payload push opcode 0x${op.toString(16)} not accepted (expected 0x01..0x4b or PUSHDATA1)`);
 }
+function detectAssetMarker(payload) {
+    for (const { marker, bytes } of ASSET_MAGICS) {
+        if (payload[0] === bytes[0] && payload[1] === bytes[1] && payload[2] === bytes[2]) {
+            return marker;
+        }
+    }
+    throw new Error(`splitAssetWrappedScriptPubKey: asset payload magic mismatch — expected "rvn" or "xna" got 0x${payload[0].toString(16)} 0x${payload[1].toString(16)} 0x${payload[2].toString(16)}`);
+}
 function parseAssetTransferPayload(payload) {
     if (payload.length < 4 + 1 + 8) {
         // 4 magic+type, 1 varstr length, 8 int64LE amount
         throw new Error(`splitAssetWrappedScriptPubKey: asset payload of ${payload.length} bytes is too short`);
     }
-    for (let i = 0; i < 3; i += 1) {
-        if (payload[i] !== RVN_MAGIC[i]) {
-            throw new Error(`splitAssetWrappedScriptPubKey: asset payload magic mismatch — expected "rvn" got 0x${payload[0].toString(16)} 0x${payload[1].toString(16)} 0x${payload[2].toString(16)}`);
-        }
-    }
+    const marker = detectAssetMarker(payload);
     if (payload[3] !== TRANSFER_TYPE) {
         throw new Error(`splitAssetWrappedScriptPubKey: asset payload type marker 0x${payload[3].toString(16)} is not a transfer (0x74)`);
     }
@@ -21590,7 +21602,7 @@ function parseAssetTransferPayload(payload) {
     // expireTime). We intentionally ignore them in this first version; the
     // raw payload remains available via `payloadHex` if a consumer later
     // needs to inspect them.
-    return { assetName, amountRaw };
+    return { assetName, amountRaw, marker };
 }
 /**
  * Parse an asset-transfer-wrapped scriptPubKey. Accepts both wrapped and
@@ -21615,12 +21627,13 @@ function splitAssetWrappedScriptPubKey(spkHex) {
     if (after + 1 !== bytes.length) {
         throw new Error(`splitAssetWrappedScriptPubKey: ${bytes.length - after - 1} trailing bytes after OP_DROP`);
     }
-    const { assetName, amountRaw } = parseAssetTransferPayload(payload);
+    const { assetName, amountRaw, marker } = parseAssetTransferPayload(payload);
     return {
         prefixHex: bytesToHex$1(prefix),
         assetTransfer: {
             assetName,
             amountRaw,
+            marker,
             payloadHex: bytesToHex$1(payload),
         },
     };
@@ -23101,9 +23114,17 @@ function isPQScript$1(script) {
         script[0] === srcExports.opcodes.OP_1 &&
         script[1] === 0x20);
 }
-// NIP-025: asset payload marker "rvn" + type. The marker is still the
-// Ravencoin-inherited one (NIP-040 migration to "xna" is pending).
-const XNA_ASSET_PAYLOAD_MARKER = bufferExports.Buffer.from("rvn", "ascii");
+// NIP-025: asset payload marker + type. NIP-040 renames the marker from the
+// Ravencoin-inherited "rvn" to "xna" (active on testnet/regtest; mainnet
+// still emits "rvn"), so detection must accept both — a UTXO with either
+// marker is an asset AuthScript the anti-RBF rule protects.
+const ASSET_PAYLOAD_MARKERS = [
+    bufferExports.Buffer.from("rvn", "ascii"),
+    bufferExports.Buffer.from("xna", "ascii"),
+];
+function hasAssetMarker(payload) {
+    return ASSET_PAYLOAD_MARKERS.some((marker) => payload.subarray(0, 3).equals(marker));
+}
 // 't' transfer, 'q' new, 'o' owner, 'r' reissue (assets.h:19-23).
 const XNA_ASSET_TYPE_MARKERS = new Set([0x74, 0x71, 0x6f, 0x72]);
 /**
@@ -23111,8 +23132,8 @@ const XNA_ASSET_TYPE_MARKERS = new Set([0x74, 0x71, 0x6f, 0x72]);
  * asset parser, script.cpp:340-378): AuthScript-v1 prefix (34 B), then
  * `OP_XNA_ASSET` exactly at offset 34, then ONE pushdata element decoded
  * with Script push semantics (direct push / OP_PUSHDATA1/2/4, lengths
- * validated) whose payload starts with "rvn" + a valid type marker, then a
- * final OP_DROP as the script's last byte.
+ * validated) whose payload starts with "rvn" or "xna" (NIP-040) + a valid
+ * type marker, then a final OP_DROP as the script's last byte.
  *
  * Deliberately NOT a generic byte search: a 0xc0 inside push data must not
  * count as a wrapper.
@@ -23160,7 +23181,7 @@ function isAssetAuthScript(scriptPubKey) {
     offset += payloadLength;
     if (payload.length < 4)
         return false;
-    if (!payload.subarray(0, 3).equals(XNA_ASSET_PAYLOAD_MARKER))
+    if (!hasAssetMarker(payload))
         return false;
     if (!XNA_ASSET_TYPE_MARKERS.has(payload[3]))
         return false;

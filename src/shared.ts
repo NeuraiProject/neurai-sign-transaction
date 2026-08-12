@@ -224,9 +224,19 @@ function isPQScript(script: Buffer): boolean {
   );
 }
 
-// NIP-025: asset payload marker "rvn" + type. The marker is still the
-// Ravencoin-inherited one (NIP-040 migration to "xna" is pending).
-const XNA_ASSET_PAYLOAD_MARKER = Buffer.from("rvn", "ascii");
+// NIP-025: asset payload marker + type. NIP-040 renames the marker from the
+// Ravencoin-inherited "rvn" to "xna" (active on testnet/regtest; mainnet
+// still emits "rvn"), so detection must accept both — a UTXO with either
+// marker is an asset AuthScript the anti-RBF rule protects.
+const ASSET_PAYLOAD_MARKERS = [
+  Buffer.from("rvn", "ascii"),
+  Buffer.from("xna", "ascii"),
+] as const;
+
+function hasAssetMarker(payload: Buffer): boolean {
+  return ASSET_PAYLOAD_MARKERS.some((marker) => payload.subarray(0, 3).equals(marker));
+}
+
 // 't' transfer, 'q' new, 'o' owner, 'r' reissue (assets.h:19-23).
 const XNA_ASSET_TYPE_MARKERS = new Set([0x74, 0x71, 0x6f, 0x72]);
 
@@ -235,8 +245,8 @@ const XNA_ASSET_TYPE_MARKERS = new Set([0x74, 0x71, 0x6f, 0x72]);
  * asset parser, script.cpp:340-378): AuthScript-v1 prefix (34 B), then
  * `OP_XNA_ASSET` exactly at offset 34, then ONE pushdata element decoded
  * with Script push semantics (direct push / OP_PUSHDATA1/2/4, lengths
- * validated) whose payload starts with "rvn" + a valid type marker, then a
- * final OP_DROP as the script's last byte.
+ * validated) whose payload starts with "rvn" or "xna" (NIP-040) + a valid
+ * type marker, then a final OP_DROP as the script's last byte.
  *
  * Deliberately NOT a generic byte search: a 0xc0 inside push data must not
  * count as a wrapper.
@@ -278,7 +288,7 @@ function isAssetAuthScript(scriptPubKey: Buffer): boolean {
   offset += payloadLength;
 
   if (payload.length < 4) return false;
-  if (!payload.subarray(0, 3).equals(XNA_ASSET_PAYLOAD_MARKER)) return false;
+  if (!hasAssetMarker(payload)) return false;
   if (!XNA_ASSET_TYPE_MARKERS.has(payload[3])) return false;
 
   return (

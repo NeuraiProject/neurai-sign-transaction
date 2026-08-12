@@ -1655,6 +1655,24 @@ test("Covenant fill — partial fill pushes the CScriptNum amount", () => {
   expect(Signer.sign(fxStr.network, fxStr.rawUnsignedTx, [fxStr.utxo], {})).toBe(signedHex);
 });
 
+test("Covenant fill — xna-wrapped order (NIP-040) derives the total and fills", () => {
+  const fx = buildLegacyFillFixture({ amount: FILL_ORDER_TOTAL });
+  // AuthScript prefix (34 B = 68 hex) + OP_XNA_ASSET (2) + push length (2):
+  // the payload magic starts at hex offset 72. Swap "rvnt" for "xnat" — the
+  // order total must still be derived via neurai-scripts' dual parser
+  // (requires @neuraiproject/neurai-scripts >= 0.8.0).
+  expect(fx.utxo.script.slice(72, 80)).toBe("72766e74");
+  const xnaScript = fx.utxo.script.slice(0, 72) + "786e6174" + fx.utxo.script.slice(80);
+  const utxo = { ...fx.utxo, script: xnaScript };
+
+  const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [utxo], {});
+  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+
+  expect(witness).toHaveLength(4); // full fill: [0x00, <1>, <>, covenant]
+  expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
+  expect(witness[1].equals(Buffer.from([0x01]))).toBe(true);
+});
+
 test("Covenant fill — PQ partial-fill covenant is accepted", () => {
   const base = buildPQCancelFixture({ selector: 0xff });
   const utxo = {
@@ -1761,12 +1779,12 @@ test("estimateVirtualSize accounts for covenant hints (fill and cancel-PQ)", () 
 
 // NOAUTH_SIMPLE.script is the AuthScript-v1 commitment for the default
 // OP_TRUE NoAuth witness script — signable with just { authType: 0 }.
-function nip025AssetPayloadHex(typeMarker) {
+function nip025AssetPayloadHex(typeMarker, magic = "rvn") {
   const name = Buffer.from("TREST", "ascii");
   const amt = Buffer.alloc(8);
   amt.writeBigUInt64LE(10000000000n, 0);
   return Buffer.concat([
-    Buffer.from("rvn", "ascii"),
+    Buffer.from(magic, "ascii"),
     Buffer.from([typeMarker]),
     Buffer.from([name.length]),
     name,
@@ -1774,8 +1792,8 @@ function nip025AssetPayloadHex(typeMarker) {
   ]).toString("hex");
 }
 
-function nip025AssetScriptHex(typeMarker) {
-  return appendAssetWrapper(NOAUTH_SIMPLE.script, nip025AssetPayloadHex(typeMarker));
+function nip025AssetScriptHex(typeMarker, magic = "rvn") {
+  return appendAssetWrapper(NOAUTH_SIMPLE.script, nip025AssetPayloadHex(typeMarker, magic));
 }
 
 function buildNip025Tx(sequence) {
@@ -1800,18 +1818,30 @@ function nip025Utxo(scriptHex) {
 
 const NIP025_KEYS = { "noauth-asset-vault": { authType: 0 } };
 
-const NIP025_MARKERS = [
-  ["rvnt/transfer", 0x74],
-  ["rvnq/new", 0x71],
-  ["rvno/owner", 0x6f],
-  ["rvnr/reissue", 0x72],
-];
+// NIP-040: both the legacy "rvn" and the post-activation "xna" markers must
+// trigger the guard — 8-case matrix (marker magic × type).
+const NIP025_MARKERS = [];
+for (const magic of ["rvn", "xna"]) {
+  for (const [type, typeMarker] of [
+    ["t/transfer", 0x74],
+    ["q/new", 0x71],
+    ["o/owner", 0x6f],
+    ["r/reissue", 0x72],
+  ]) {
+    NIP025_MARKERS.push([`${magic} ${type}`, magic, typeMarker]);
+  }
+}
 
-for (const [label, marker] of NIP025_MARKERS) {
+for (const [label, magic, marker] of NIP025_MARKERS) {
   test(`NIP-025 — ${label} asset AuthScript rejects a low-sequence input`, () => {
     const tx = buildNip025Tx(0xfffffffd);
     expect(() =>
-      Signer.sign("xna-pq-test", tx.toHex(), [nip025Utxo(nip025AssetScriptHex(marker))], NIP025_KEYS)
+      Signer.sign(
+        "xna-pq-test",
+        tx.toHex(),
+        [nip025Utxo(nip025AssetScriptHex(marker, magic))],
+        NIP025_KEYS
+      )
     ).toThrow(/NIP-025/);
   });
 
@@ -1820,7 +1850,7 @@ for (const [label, marker] of NIP025_MARKERS) {
     const signedHex = Signer.sign(
       "xna-pq-test",
       tx.toHex(),
-      [nip025Utxo(nip025AssetScriptHex(marker))],
+      [nip025Utxo(nip025AssetScriptHex(marker, magic))],
       NIP025_KEYS
     );
     const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
@@ -1842,8 +1872,10 @@ test("NIP-025 — a bare AuthScript prevout does NOT trigger the rule", () => {
 });
 
 const NIP025_MALFORMED = [
-  ["payload without rvn magic", appendAssetWrapper(NOAUTH_SIMPLE.script, "78787874" + "02beef")],
+  ["payload without rvn/xna magic", appendAssetWrapper(NOAUTH_SIMPLE.script, "78787874" + "02beef")],
+  ["near-miss xnn magic", appendAssetWrapper(NOAUTH_SIMPLE.script, "786e6e74" + "02beef")],
   ["unknown type marker", nip025AssetScriptHex(0x7a)],
+  ["unknown type marker with xna magic", nip025AssetScriptHex(0x7a, "xna")],
   ["missing final OP_DROP", nip025AssetScriptHex(0x74).slice(0, -2)],
   ["truncated pushdata", NOAUTH_SIMPLE.script + "c0" + "4c50"],
 ];
@@ -1890,6 +1922,71 @@ test("NIP-025 — rule is inactive on mainnet networks", () => {
   );
   const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
   expect(witness).toHaveLength(2);
+});
+
+test("NIP-025 — rule stays inactive on mainnet for xna-marked UTXOs too", () => {
+  // NIP-040 must not change the per-network activation: an xna-marked asset
+  // AuthScript UTXO on a mainnet network still signs with an RBF sequence.
+  const tx = buildNip025Tx(0xfffffffd);
+  const signedHex = Signer.sign(
+    "xna-pq",
+    tx.toHex(),
+    [nip025Utxo(nip025AssetScriptHex(0x74, "xna"))],
+    NIP025_KEYS
+  );
+  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  expect(witness).toHaveLength(2);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NIP-040 — legacy P2PKH input wrapped with the xna marker
+// ═══════════════════════════════════════════════════════════════════════════
+
+test("NIP-040 — legacy P2PKH input wrapped with xna signs and verifies", () => {
+  const wif = "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW";
+  const keyPair = ECPairCancel.fromWIF(wif, XNA_TESTNET);
+  const p2pkh = "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac";
+  const wrappedScript = appendAssetWrapper(p2pkh, nip025AssetPayloadHex(0x74, "xna"));
+
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("cc".repeat(32), "hex").reverse(), 0, 0xffffffff);
+  tx.addOutput(Buffer.from(p2pkh, "hex"), 0);
+
+  const signedHex = Signer.sign(
+    "xna-test",
+    tx.toHex(),
+    [
+      {
+        address: "mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA",
+        assetName: "TREST",
+        txid: "cc".repeat(32),
+        outputIndex: 0,
+        script: wrappedScript,
+        satoshis: 10000000000, // indexer convention: asset quantity, not nValue
+        value: 10000000000,
+      },
+    ],
+    { mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA: wif }
+  );
+
+  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const chunks = bitcoin.script.decompile(signedTx.ins[0].script);
+  expect(chunks).toHaveLength(2);
+  const [sigWithType, pubkey] = chunks;
+  expect(Buffer.from(pubkey).equals(Buffer.from(keyPair.publicKey))).toBe(true);
+
+  // The node signs legacy inputs against the FULL prevout script — wrapper
+  // and xna marker included. Recompute that sighash and verify the ECDSA
+  // signature against it, so a signer that stripped or re-derived the
+  // scriptCode (losing the wrapper) would fail here.
+  const { signature } = bitcoin.script.signature.decode(Buffer.from(sigWithType));
+  const sighash = signedTx.hashForSignature(
+    0,
+    Buffer.from(wrappedScript, "hex"),
+    bitcoin.Transaction.SIGHASH_ALL
+  );
+  expect(keyPair.verify(sighash, signature)).toBe(true);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
