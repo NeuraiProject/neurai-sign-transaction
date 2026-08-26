@@ -25,13 +25,14 @@
   "overrides": {
     "ecpair": "3.0.1",
     "minimatch": "3.1.4",
-    "brace-expansion": "1.1.13"
+    "brace-expansion": "1.1.18"
   },
   "scripts": {
     "clean": "rm -rf dist",
     "build:js": "rollup -c rollup.config.mjs",
     "build:types": "tsc -p tsconfig.types.json && rollup -c rollup.dts.config.mjs",
     "build": "npm run clean && npm run build:js && npm run build:types",
+    "prepack": "npm run build",
     "test": "npm run build && vitest run test.js"
   },
   "repository": {
@@ -49,7 +50,7 @@
   "homepage": "https://github.com/neuraiproject/neurai-sign-transaction#readme",
   "dependencies": {
     "@bitcoinerlab/secp256k1": "1.2.0",
-    "@neuraiproject/neurai-create-transaction": "^0.6.0",
+    "@neuraiproject/neurai-create-transaction": "^0.7.0",
     "@neuraiproject/neurai-scripts": "^0.8.0",
     "@noble/post-quantum": "^0.6.0",
     "bitcoinjs-lib": "6.1.7",
