@@ -76,7 +76,7 @@ function encodeVarInt(value: number): Buffer {
   return out;
 }
 
-function encodeVarSlice(buffer: Buffer): Buffer {
+function encodeVarSlice(buffer: Uint8Array): Buffer {
   return Buffer.concat([encodeVarInt(buffer.length), buffer]);
 }
 

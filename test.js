@@ -3,6 +3,19 @@ const bitcoin = require("bitcoinjs-lib");
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
+// bitcoinjs v7 returns Uint8Array; normalize bytes only for legacy fixture assertions.
+function decodeTestTransaction(hex) {
+  const tx = bitcoin.Transaction.fromHex(hex);
+  for (const input of tx.ins) {
+    input.hash = Buffer.from(input.hash);
+    input.script = Buffer.from(input.script);
+    input.witness = input.witness.map(item => Buffer.from(item));
+  }
+  for (const output of tx.outs) output.script = Buffer.from(output.script);
+  return tx;
+}
+function compileTestScript(chunks) { return Buffer.from(bitcoin.script.compile(chunks)); }
+
 
 const PQ_SIMPLE = {
   seedKey: "0707070707070707070707070707070707070707070707070707070707070707",
@@ -64,7 +77,7 @@ test("Verify XNA sign PQ AuthScript transaction", () => {
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("11".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 125000);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 125000n);
 
   const signedHex = Signer.sign(
     "xna-pq-test",
@@ -87,7 +100,7 @@ test("Verify XNA sign PQ AuthScript transaction", () => {
     }
   );
 
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
   const witness = signedTx.ins[0].witness;
 
   expect(signedTx.ins[0].script.length).toBe(0);
@@ -103,7 +116,7 @@ test("Verify mixed legacy and PQ AuthScript asset transaction", () => {
   tx.version = 2;
   tx.addInput(Buffer.from("22".repeat(32), "hex").reverse(), 1);
   tx.addInput(Buffer.from("33".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 240000);
+  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 240000n);
 
   const signedHex = Signer.sign(
     "xna-test",
@@ -137,7 +150,7 @@ test("Verify mixed legacy and PQ AuthScript asset transaction", () => {
     }
   );
 
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
   const pqWitness = signedTx.ins[1].witness;
 
   expect(signedTx.ins[0].script.length).toBeGreaterThan(0);
@@ -154,7 +167,7 @@ test("Verify partial PQ signing preserves foreign legacy input", () => {
   tx.version = 2;
   tx.addInput(Buffer.from("22".repeat(32), "hex").reverse(), 1);
   tx.addInput(Buffer.from("33".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 240000);
+  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 240000n);
 
   const fullySignedHex = Signer.sign(
     "xna-test",
@@ -188,7 +201,7 @@ test("Verify partial PQ signing preserves foreign legacy input", () => {
     }
   );
 
-  const partiallySignedTx = bitcoin.Transaction.fromHex(fullySignedHex);
+  const partiallySignedTx = decodeTestTransaction(fullySignedHex);
   partiallySignedTx.setWitness(1, []);
 
   const signedHex = Signer.sign(
@@ -220,7 +233,7 @@ test("Verify debug events expose PQ AuthScript signing path", () => {
   tx.version = 2;
   tx.addInput(Buffer.from("22".repeat(32), "hex").reverse(), 1);
   tx.addInput(Buffer.from("33".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 240000);
+  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 240000n);
 
   const fullySignedHex = Signer.sign(
     "xna-test",
@@ -254,7 +267,7 @@ test("Verify debug events expose PQ AuthScript signing path", () => {
     }
   );
 
-  const partiallySignedTx = bitcoin.Transaction.fromHex(fullySignedHex);
+  const partiallySignedTx = decodeTestTransaction(fullySignedHex);
   const debugEvents = [];
   partiallySignedTx.setWitness(1, []);
 
@@ -372,7 +385,7 @@ test("Verify NoAuth (authType=0x00) signing with OP_TRUE", () => {
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
 
   const signedHex = Signer.sign(
     "xna-pq-test",
@@ -395,7 +408,7 @@ test("Verify NoAuth (authType=0x00) signing with OP_TRUE", () => {
     }
   );
 
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
   const witness = signedTx.ins[0].witness;
 
   expect(signedTx.ins[0].script.length).toBe(0);
@@ -408,7 +421,7 @@ test("Verify NoAuth (authType=0x00) signing with covenant witnessScript and func
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("55".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
 
   const signedHex = Signer.sign(
     "xna-pq-test",
@@ -433,7 +446,7 @@ test("Verify NoAuth (authType=0x00) signing with covenant witnessScript and func
     }
   );
 
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
   const witness = signedTx.ins[0].witness;
 
   expect(signedTx.ins[0].script.length).toBe(0);
@@ -447,7 +460,7 @@ test("Verify Legacy AuthScript (authType=0x02) signing with OP_TRUE", () => {
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("66".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
 
   const signedHex = Signer.sign(
     "xna-test",
@@ -471,7 +484,7 @@ test("Verify Legacy AuthScript (authType=0x02) signing with OP_TRUE", () => {
     }
   );
 
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
   const witness = signedTx.ins[0].witness;
 
   expect(signedTx.ins[0].script.length).toBe(0);
@@ -486,7 +499,7 @@ test("Verify Legacy AuthScript (authType=0x02) signing with covenant witnessScri
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("77".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
 
   const signedHex = Signer.sign(
     "xna-test",
@@ -512,7 +525,7 @@ test("Verify Legacy AuthScript (authType=0x02) signing with covenant witnessScri
     }
   );
 
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
   const witness = signedTx.ins[0].witness;
 
   expect(signedTx.ins[0].script.length).toBe(0);
@@ -530,7 +543,7 @@ test("Verify mixed transaction: Legacy P2PKH + NoAuth + PQ AuthScript", () => {
   tx.addInput(Buffer.from("22".repeat(32), "hex").reverse(), 1);
   tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0);
   tx.addInput(Buffer.from("11".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 300000);
+  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 300000n);
 
   const signedHex = Signer.sign(
     "xna-test",
@@ -576,7 +589,7 @@ test("Verify mixed transaction: Legacy P2PKH + NoAuth + PQ AuthScript", () => {
     }
   );
 
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
 
   // Input 0: Legacy P2PKH
   expect(signedTx.ins[0].script.length).toBeGreaterThan(0);
@@ -597,7 +610,7 @@ test("Verify PQ AuthScript signing with covenant witnessScript and functionalArg
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("88".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
 
   const signedHex = Signer.sign(
     "xna-pq-test",
@@ -622,7 +635,7 @@ test("Verify PQ AuthScript signing with covenant witnessScript and functionalArg
     }
   );
 
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
   const witness = signedTx.ins[0].witness;
 
   expect(signedTx.ins[0].script.length).toBe(0);
@@ -638,7 +651,7 @@ test("Verify unsupported authType throws error", () => {
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
 
   expect(() =>
     Signer.sign(
@@ -668,7 +681,7 @@ test("Verify AuthScript commitment mismatch throws error", () => {
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
 
   // Use PQ_SIMPLE script but provide NoAuth key — commitment won't match
   expect(() =>
@@ -699,7 +712,7 @@ test("Verify NoAuth signing is deterministic", () => {
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
 
   const utxos = [
     {
@@ -724,7 +737,7 @@ test("Verify Legacy AuthScript signing is deterministic", () => {
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("66".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
 
   const utxos = [
     {
@@ -752,7 +765,7 @@ test("Verify mixed transaction: Legacy P2PKH + NoAuth + PQ + Legacy AuthScript (
   tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0); // NoAuth
   tx.addInput(Buffer.from("11".repeat(32), "hex").reverse(), 0); // PQ AuthScript
   tx.addInput(Buffer.from("66".repeat(32), "hex").reverse(), 0); // Legacy AuthScript
-  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 400000);
+  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 400000n);
 
   const signedHex = Signer.sign(
     "xna-test",
@@ -811,7 +824,7 @@ test("Verify mixed transaction: Legacy P2PKH + NoAuth + PQ + Legacy AuthScript (
     }
   );
 
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
 
   // Input 0: Legacy P2PKH — scriptSig set, no witness
   expect(signedTx.ins[0].script.length).toBeGreaterThan(0);
@@ -877,7 +890,7 @@ const XNA_TESTNET = {
   wif: 239,
 };
 
-function hash160Node(buffer) { return bitcoin.crypto.hash160(buffer); }
+function hash160Node(buffer) { return Buffer.from(bitcoin.crypto.hash160(buffer)); }
 
 function encodeAssetPayloadHex(assetName, amountRaw) {
   const name = Buffer.from(assetName, "ascii");
@@ -931,7 +944,7 @@ function buildSpendTx(prevoutTxidBuf, refundSpk) {
   tx.version = 2;
   tx.locktime = 0;
   tx.addInput(prevoutTxidBuf, 0, 0xfffffffe, Buffer.alloc(0));
-  tx.addOutput(refundSpk, 0);
+  tx.addOutput(refundSpk, 0n);
   return tx;
 }
 
@@ -974,7 +987,7 @@ function buildLegacyCancelFixture(opts) {
   const covenantBytes = Buffer.from(covenantHex, "hex");
   const wrap = wrapCovenantScriptPubKey(covenantBytes, "TREST", 10000000000n);
 
-  const sellerP2PKHSpk = bitcoin.script.compile([
+  const sellerP2PKHSpk = compileTestScript([
     bitcoin.opcodes.OP_DUP, bitcoin.opcodes.OP_HASH160, sellerPKH,
     bitcoin.opcodes.OP_EQUALVERIFY, bitcoin.opcodes.OP_CHECKSIG,
   ]);
@@ -1015,7 +1028,7 @@ test("Covenant cancel legacy — happy path produces a NOAUTH witness spend", ()
   const fx = buildLegacyCancelFixture({ sellerKeyPair });
 
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
 
   // scriptSig MUST be empty (witness-v1 spend). Witness MUST be
   // [NOAUTH_TYPE, sig+hashtype, pubkey, OP_1 selector, covenantBytes].
@@ -1082,7 +1095,7 @@ test("Covenant cancel hint rejected on a non-AuthScript-v1 prevout", () => {
   const fx = buildLegacyCancelFixture({ sellerKeyPair });
 
   // Build a UTXO whose scriptPubKey is a bare P2PKH (isLegacyScript=true).
-  const p2pkh = bitcoin.script.compile([
+  const p2pkh = compileTestScript([
     bitcoin.opcodes.OP_DUP, bitcoin.opcodes.OP_HASH160, fx.sellerPKH,
     bitcoin.opcodes.OP_EQUALVERIFY, bitcoin.opcodes.OP_CHECKSIG,
   ]).toString("hex");
@@ -1093,7 +1106,7 @@ test("Covenant cancel hint rejected on a non-AuthScript-v1 prevout", () => {
   // Instead, it falls through to the normal legacy signing path, which
   // succeeds (the prevout IS a valid P2PKH). The witness stays empty.
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [badUtxo], fx.privateKeys);
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
   expect(signedTx.ins[0].witness).toHaveLength(0);
   expect(signedTx.ins[0].script.length).toBeGreaterThan(0);
 });
@@ -1129,7 +1142,7 @@ function buildPQCancelFixture(opts) {
   // Refund to a P2PKH (wrapped with asset transfer) — doesn't matter whose.
   const refundKey = ECPairCancel.makeRandom({ network: XNA_TESTNET });
   const refundPKH = bitcoin.crypto.hash160(Buffer.from(refundKey.publicKey));
-  const refundSpk = bitcoin.script.compile([
+  const refundSpk = compileTestScript([
     bitcoin.opcodes.OP_DUP, bitcoin.opcodes.OP_HASH160, refundPKH,
     bitcoin.opcodes.OP_EQUALVERIFY, bitcoin.opcodes.OP_CHECKSIG,
   ]);
@@ -1169,7 +1182,7 @@ test("Covenant cancel PQ — happy path with selector 0xff", () => {
   const fx = buildPQCancelFixture({ selector: 0xff });
 
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
 
   expect(signedTx.ins[0].script.length).toBe(0);
   const witness = signedTx.ins[0].witness;
@@ -1195,7 +1208,7 @@ test("Covenant cancel PQ — happy path with selector 0xff", () => {
 test("Covenant cancel PQ — happy path with selector 0x7f (no CURRENT_INDEX bit)", () => {
   const fx = buildPQCancelFixture({ selector: 0x7f });
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
   const sigOnly = signedTx.ins[0].witness[1].slice(0, -1);
   const expectedMsg = Buffer.from(
     sha256Sync(new Uint8Array(computeOpTxHashForTest(signedTx, 0x7f, 0)))
@@ -1243,7 +1256,7 @@ test("Covenant cancel legacy — happy path with MTP expiration gate", () => {
   // Cancel branch ignores expiration, so signing must still succeed and
   // produce the same NOAUTH witness shape as the no-expiration happy path.
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
-  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  const witness = decodeTestTransaction(signedHex).ins[0].witness;
   expect(witness).toHaveLength(5);
   expect(witness[4].equals(fx.covenantBytes)).toBe(true);
 });
@@ -1258,7 +1271,7 @@ test("Covenant cancel PQ — happy path with MTP expiration gate", () => {
   expect(parsed.expiration).toEqual({ mode: "mtp", value: 1700000000n });
 
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
-  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  const witness = decodeTestTransaction(signedHex).ins[0].witness;
   expect(witness).toHaveLength(5);
   expect(witness[4].equals(fx.covenantBytes)).toBe(true);
 });
@@ -1278,7 +1291,7 @@ test("Covenant cancel legacy — accepts legacy raw-push selector encoding (0x01
   expect(fx.covenantHex.includes("52d7a069")).toBe(false);
 
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
-  expect(bitcoin.Transaction.fromHex(signedHex).ins[0].witness).toHaveLength(5);
+  expect(decodeTestTransaction(signedHex).ins[0].witness).toHaveLength(5);
 });
 
 test("Covenant cancel PQ — accepts legacy raw-push selector encoding (0x01 0x01) for HEIGHT", () => {
@@ -1292,7 +1305,7 @@ test("Covenant cancel PQ — accepts legacy raw-push selector encoding (0x01 0x0
   expect(fx.covenantHex.includes("51d7a069")).toBe(false);
 
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys);
-  expect(bitcoin.Transaction.fromHex(signedHex).ins[0].witness).toHaveLength(5);
+  expect(decodeTestTransaction(signedHex).ins[0].witness).toHaveLength(5);
 });
 
 // ───────────────────────────────────────────────────────────
@@ -1307,7 +1320,7 @@ test("Covenant cancel PQ — accepts legacy raw-push selector encoding (0x01 0x0
  * test will light up.
  */
 function computeOpTxHashForTest(tx, selector, inIndex) {
-  const h256 = (b) => bitcoin.crypto.hash256(b);
+  const h256 = (b) => Buffer.from(bitcoin.crypto.hash256(b));
   const encVarInt = (n) => {
     if (n < 0xfd) return Buffer.from([n]);
     if (n <= 0xffff) {
@@ -1395,8 +1408,8 @@ test("computeOpTxHash — aggregate bits use BIP143-style pre-hash (not raw conc
   tx.locktime = 42;
   tx.addInput(Buffer.from("11".repeat(32), "hex"), 0, 0xfffffffe, Buffer.alloc(0));
   tx.addInput(Buffer.from("22".repeat(32), "hex"), 7, 0xfffffffd, Buffer.alloc(0));
-  tx.addOutput(Buffer.from("6a04deadbeef", "hex"), 100);
-  tx.addOutput(Buffer.from("76a91400".repeat(3) + "0000000088ac", "hex"), 50000);
+  tx.addOutput(Buffer.from("6a04deadbeef", "hex"), 100n);
+  tx.addOutput(Buffer.from("76a91400".repeat(3) + "0000000088ac", "hex"), 50000n);
 
   // Sanity: per-bit hashes are all 32 bytes and all different.
   const seen = new Set();
@@ -1430,7 +1443,7 @@ test("computeOpTxHash — CURRENT_* bits differ per input index", () => {
   tx.locktime = 0;
   tx.addInput(Buffer.from("aa".repeat(32), "hex"), 0, 0xfffffffe, Buffer.alloc(0));
   tx.addInput(Buffer.from("bb".repeat(32), "hex"), 5, 0xfffffff0, Buffer.alloc(0));
-  tx.addOutput(Buffer.from("51", "hex"), 1000);
+  tx.addOutput(Buffer.from("51", "hex"), 1000n);
 
   for (const bit of [0x20, 0x40, 0x80]) {
     const h0 = computeOpTxHashForTest(tx, bit, 0);
@@ -1496,7 +1509,7 @@ test("estimateVirtualSize matches the actual signed size for a PQ-only tx", () =
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("11".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 125000);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 125000n);
 
   const utxos = [
     {
@@ -1515,7 +1528,7 @@ test("estimateVirtualSize matches the actual signed size for a PQ-only tx", () =
   const signedHex = Signer.sign("xna-pq-test", tx.toHex(), utxos, {
     "pq-input-1": { seedKey: PQ_SIMPLE.seedKey },
   });
-  const actualVsize = bitcoin.Transaction.fromHex(signedHex).virtualSize();
+  const actualVsize = decodeTestTransaction(signedHex).virtualSize();
 
   // ml_dsa44 produces variable-length signatures, but our dummy uses the
   // worst case (2420 bytes), so the estimate must always be >= actual and
@@ -1528,7 +1541,7 @@ test("estimateVirtualSize matches a legacy P2PKH spend within 1 vbyte", () => {
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("22".repeat(32), "hex").reverse(), 1);
-  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 90000);
+  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 90000n);
 
   const utxos = [
     {
@@ -1548,7 +1561,7 @@ test("estimateVirtualSize matches a legacy P2PKH spend within 1 vbyte", () => {
     mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA:
       "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW",
   });
-  const actualVsize = bitcoin.Transaction.fromHex(signedHex).virtualSize();
+  const actualVsize = decodeTestTransaction(signedHex).virtualSize();
 
   // ECDSA DER signatures vary 70-72 bytes; we assume worst-case 72.
   expect(estimated).toBeGreaterThanOrEqual(actualVsize);
@@ -1560,7 +1573,7 @@ test("estimateVirtualSize handles a mixed legacy + PQ transaction", () => {
   tx.version = 2;
   tx.addInput(Buffer.from("22".repeat(32), "hex").reverse(), 1);
   tx.addInput(Buffer.from("33".repeat(32), "hex").reverse(), 0);
-  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 240000);
+  tx.addOutput(Buffer.from("76a9141239cd8e03d180a55b75763f9ef7424b7e2eee8f88ac", "hex"), 240000n);
 
   const utxos = [
     {
@@ -1590,7 +1603,7 @@ test("estimateVirtualSize handles a mixed legacy + PQ transaction", () => {
       "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW",
     "pq-asset-input": { seedKey: PQ_ASSET.seedKey },
   });
-  const actualVsize = bitcoin.Transaction.fromHex(signedHex).virtualSize();
+  const actualVsize = decodeTestTransaction(signedHex).virtualSize();
 
   expect(estimated).toBeGreaterThanOrEqual(actualVsize);
   expect(estimated - actualVsize).toBeLessThanOrEqual(3);
@@ -1625,7 +1638,7 @@ test("Covenant fill — full fill spends without signature or private key", () =
 
   // No private keys at all: the fill branch must not need one.
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], {});
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
 
   expect(signedTx.ins[0].script.length).toBe(0);
   const witness = signedTx.ins[0].witness;
@@ -1641,7 +1654,7 @@ test("Covenant fill — partial fill pushes the CScriptNum amount", () => {
   const fx = buildLegacyFillFixture({ amount });
 
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], {});
-  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  const witness = decodeTestTransaction(signedHex).ins[0].witness;
 
   expect(witness).toHaveLength(5); // [0x00, <N>, <>, <>, covenant]
   expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
@@ -1666,7 +1679,7 @@ test("Covenant fill — xna-wrapped order (NIP-040) derives the total and fills"
   const utxo = { ...fx.utxo, script: xnaScript };
 
   const signedHex = Signer.sign(fx.network, fx.rawUnsignedTx, [utxo], {});
-  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  const witness = decodeTestTransaction(signedHex).ins[0].witness;
 
   expect(witness).toHaveLength(4); // full fill: [0x00, <1>, <>, covenant]
   expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
@@ -1685,7 +1698,7 @@ test("Covenant fill — PQ partial-fill covenant is accepted", () => {
   };
 
   const signedHex = Signer.sign(base.network, base.rawUnsignedTx, [utxo], {});
-  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  const witness = decodeTestTransaction(signedHex).ins[0].witness;
 
   expect(witness).toHaveLength(4);
   expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
@@ -1758,7 +1771,7 @@ test("Covenant fill — rejects a prevout without a transfer asset wrapper", () 
 test("estimateVirtualSize accounts for covenant hints (fill and cancel-PQ)", () => {
   const fx = buildLegacyFillFixture({ amount: 2500000000n });
   const estFill = Signer.estimateVirtualSize(fx.network, fx.rawUnsignedTx, [fx.utxo]);
-  const actualFill = bitcoin.Transaction.fromHex(
+  const actualFill = decodeTestTransaction(
     Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], {})
   ).virtualSize();
   expect(estFill).toBeGreaterThanOrEqual(actualFill);
@@ -1766,7 +1779,7 @@ test("estimateVirtualSize accounts for covenant hints (fill and cancel-PQ)", () 
 
   const pq = buildPQCancelFixture({ selector: 0xff });
   const estCancel = Signer.estimateVirtualSize(pq.network, pq.rawUnsignedTx, [pq.utxo]);
-  const actualCancel = bitcoin.Transaction.fromHex(
+  const actualCancel = decodeTestTransaction(
     Signer.sign(pq.network, pq.rawUnsignedTx, [pq.utxo], pq.privateKeys)
   ).virtualSize();
   expect(estCancel).toBeGreaterThanOrEqual(actualCancel);
@@ -1800,7 +1813,7 @@ function buildNip025Tx(sequence) {
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("aa".repeat(32), "hex").reverse(), 0, sequence);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 0n);
   return tx;
 }
 
@@ -1853,7 +1866,7 @@ for (const [label, magic, marker] of NIP025_MARKERS) {
       [nip025Utxo(nip025AssetScriptHex(marker, magic))],
       NIP025_KEYS
     );
-    const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+    const witness = decodeTestTransaction(signedHex).ins[0].witness;
     expect(witness).toHaveLength(2);
     expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
   });
@@ -1867,7 +1880,7 @@ test("NIP-025 — a bare AuthScript prevout does NOT trigger the rule", () => {
     [nip025Utxo(NOAUTH_SIMPLE.script)],
     NIP025_KEYS
   );
-  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  const witness = decodeTestTransaction(signedHex).ins[0].witness;
   expect(witness).toHaveLength(2);
 });
 
@@ -1884,7 +1897,7 @@ for (const [label, scriptHex] of NIP025_MALFORMED) {
   test(`NIP-025 — malformed wrapper (${label}) does not trigger the rule`, () => {
     const tx = buildNip025Tx(0xfffffffd);
     const signedHex = Signer.sign("xna-pq-test", tx.toHex(), [nip025Utxo(scriptHex)], NIP025_KEYS);
-    const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+    const witness = decodeTestTransaction(signedHex).ins[0].witness;
     expect(witness).toHaveLength(2);
   });
 }
@@ -1894,7 +1907,7 @@ test("NIP-025 — a low sequence on a sibling legacy input is also rejected", ()
   tx.version = 2;
   tx.addInput(Buffer.from("aa".repeat(32), "hex").reverse(), 0, 0xffffffff);
   tx.addInput(Buffer.from("bb".repeat(32), "hex").reverse(), 0, 0xfffffffd);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 0n);
 
   const utxos = [
     nip025Utxo(nip025AssetScriptHex(0x74)),
@@ -1920,7 +1933,7 @@ test("NIP-025 — rule is inactive on mainnet networks", () => {
     [nip025Utxo(nip025AssetScriptHex(0x74))],
     NIP025_KEYS
   );
-  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  const witness = decodeTestTransaction(signedHex).ins[0].witness;
   expect(witness).toHaveLength(2);
 });
 
@@ -1934,7 +1947,7 @@ test("NIP-025 — rule stays inactive on mainnet for xna-marked UTXOs too", () =
     [nip025Utxo(nip025AssetScriptHex(0x74, "xna"))],
     NIP025_KEYS
   );
-  const witness = bitcoin.Transaction.fromHex(signedHex).ins[0].witness;
+  const witness = decodeTestTransaction(signedHex).ins[0].witness;
   expect(witness).toHaveLength(2);
 });
 
@@ -1951,7 +1964,7 @@ test("NIP-040 — legacy P2PKH input wrapped with xna signs and verifies", () =>
   const tx = new bitcoin.Transaction();
   tx.version = 2;
   tx.addInput(Buffer.from("cc".repeat(32), "hex").reverse(), 0, 0xffffffff);
-  tx.addOutput(Buffer.from(p2pkh, "hex"), 0);
+  tx.addOutput(Buffer.from(p2pkh, "hex"), 0n);
 
   const signedHex = Signer.sign(
     "xna-test",
@@ -1970,7 +1983,7 @@ test("NIP-040 — legacy P2PKH input wrapped with xna signs and verifies", () =>
     { mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA: wif }
   );
 
-  const signedTx = bitcoin.Transaction.fromHex(signedHex);
+  const signedTx = decodeTestTransaction(signedHex);
   const chunks = bitcoin.script.decompile(signedTx.ins[0].script);
   expect(chunks).toHaveLength(2);
   const [sigWithType, pubkey] = chunks;
@@ -2046,7 +2059,7 @@ test("v3 — legacy P2PKH sighash commits to version and vrefin", () => {
   const sigOf = (hex) => {
     const decoded = CTcodec.parseTransaction(hex);
     const scriptSig = Buffer.from(decoded.inputs[0].scriptSigHex, "hex");
-    return bitcoin.script.decompile(scriptSig)[0].toString("hex");
+    return Buffer.from(bitcoin.script.decompile(scriptSig)[0]).toString("hex");
   };
 
   const v2 = sigOf(Signer.sign("xna-test", buildUnsignedHex(2, input, V3_PAYOUT), utxos, keys));
@@ -2168,4 +2181,49 @@ test("v3 — rejects a duplicated vrefin reference", () => {
       { "noauth-vault": { authType: 0 } }
     )
   ).toThrow(/bad-txns-vrefin-duplicate/);
+});
+
+// Range regressions use public fixtures only; no node or network connection.
+test.each([9007199254740993n,10000000000000001n,10555217616498300n,2100000000000000000n])('signs and verifies large legacy output %s exactly', value => {
+  const fixture=require('./mock/test_xna_transaction.json');
+  const utxo={...fixture.debug.xnaUTXOs[0],satoshis:value,value:value};
+  const tx=new bitcoin.Transaction();tx.version=2;
+  tx.addInput(Buffer.from(utxo.txid,'hex').reverse(),utxo.outputIndex);
+  tx.addOutput(Buffer.from(utxo.script,'hex'),value);
+  const raw=Signer.sign('xna-test',tx.toHex(),[utxo],fixture.debug.privateKeys,{debug:false});
+  const signed=bitcoin.Transaction.fromHex(raw);
+  expect(signed.outs[0].value).toBe(value);
+  const [encoded,pubkey]=bitcoin.script.decompile(signed.ins[0].script);
+  const decoded=bitcoin.script.signature.decode(encoded);
+  const digest=signed.hashForSignature(0,Buffer.from(utxo.script,'hex'),decoded.hashType);
+  expect(require('@bitcoinerlab/secp256k1').verify(digest,pubkey,decoded.signature)).toBe(true);
+  expect(Signer.estimateVirtualSize('xna-test',tx.toHex(),[utxo])).toBeGreaterThanOrEqual(signed.virtualSize());
+});
+
+test('large PQ input and output sign with exact amount in AuthScript preimage', async () => {
+  const {ml_dsa44}=await import('@noble/post-quantum/ml-dsa.js');
+  const value=10000000000000001n, inputValue=value+10000n;
+  const tx=new bitcoin.Transaction();tx.version=2;
+  tx.addInput(Buffer.from('11'.repeat(32),'hex').reverse(),0);
+  tx.addOutput(Buffer.from('76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac','hex'),value);
+  const u={address:'pq-input-1',assetName:'XNA',txid:'11'.repeat(32),outputIndex:0,script:PQ_SIMPLE.script,satoshis:inputValue.toString(),value:inputValue.toString()};
+  const raw=Signer.sign('xna-pq-test',tx.toHex(),[u],{'pq-input-1':{seedKey:PQ_SIMPLE.seedKey}},{debug:false});
+  const signed=bitcoin.Transaction.fromHex(raw);expect(signed.outs[0].value).toBe(value);
+  const hash=b=>Buffer.from(bitcoin.crypto.hash256(b));
+  const u32=n=>{const b=Buffer.alloc(4);b.writeUInt32LE(n);return b;};
+  const u64=n=>{const b=Buffer.alloc(8);b.writeBigUInt64LE(n);return b;};
+  const outpoint=Buffer.concat([Buffer.from(tx.ins[0].hash),u32(0)]);
+  const output=Buffer.concat([u64(value),Buffer.from([tx.outs[0].script.length]),tx.outs[0].script]);
+  const preimage=Buffer.concat([u32(2),hash(outpoint),hash(u32(0xffffffff)),outpoint,Buffer.from([1,0x51]),u64(inputValue),u32(0xffffffff),hash(output),u32(0),Buffer.from([1]),u32(1)]);
+  const witness=signed.ins[0].witness;
+  expect(ml_dsa44.verify(witness[1].slice(0,-1),hash(preimage),witness[2].slice(1))).toBe(true);
+  const corrupt=Buffer.from(preimage);corrupt[104]^=1;
+  expect(ml_dsa44.verify(witness[1].slice(0,-1),hash(corrupt),witness[2].slice(1))).toBe(false);
+  expect(()=>Signer.sign('xna-pq-test',tx.toHex(),[{...u,satoshis:Number(inputValue)}],{'pq-input-1':{seedKey:PQ_SIMPLE.seedKey}},{debug:false})).toThrow();
+});
+
+test('rejects outputs beyond Neurai MAX_MONEY even though int64 can encode them', () => {
+  const tx=new bitcoin.Transaction();tx.addInput(Buffer.alloc(32,1),0);
+  tx.addOutput(Buffer.from('51','hex'),2100000000000000001n);
+  expect(()=>Signer.sign('xna-test',tx.toHex(),[],{},{debug:false})).toThrow(/monetary range/);
 });

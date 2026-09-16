@@ -56,9 +56,9 @@ export interface IUTXO {
      * supplied.
      */
     script: string;
-    satoshis: number;
+    satoshis: number | bigint | string;
     height?: number;
-    value: number;
+    value: number | bigint | string;
     /**
      * Optional signing hint for non-standard prevouts (currently: partial-fill
      * covenant cancel branches). Ignored for recognised legacy/PQ prevouts.

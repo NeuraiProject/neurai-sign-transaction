@@ -1,3 +1,4 @@
+import { assertMoneyRange } from '@neuraiproject/neurai-create-transaction/amounts';
 import * as bitcoin from "bitcoinjs-lib";
 import { Buffer } from "buffer";
 import {
@@ -201,7 +202,7 @@ export function estimateVirtualSize(
   }
 
   for (const out of decoded.outputs) {
-    tx.addOutput(Buffer.from(out.scriptPubKeyHex, "hex"), Number(out.valueSats));
+    tx.addOutput(Buffer.from(out.scriptPubKeyHex, "hex"), assertMoneyRange(out.valueSats, 'output'));
   }
 
   for (let i = 0; i < tx.ins.length; i++) {

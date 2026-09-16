@@ -281,3 +281,17 @@ The estimator does not currently inspect the `privateKeys` map and does not acce
 | `bareScriptHint` covenant-cancel branches | Witness includes the covenant script and selector byte, neither of which the estimator can size |
 
 If you build covenant spends, NoAuth witnesses, or Legacy AuthScript witnesses programmatically, compute the witness size yourself and add it to `VBYTES.baseTxOverheadBytes + sum(estimateOutputBytes)`. The exotic-witness path may grow a `signingHints` parameter in a future minor version.
+
+### Exact values and bitcoinjs-lib 7
+
+The signer uses bitcoinjs-lib **7.0.1** and keeps transaction output values and
+AuthScript input values as bigint throughout signing and size estimation.
+UTXO `satoshis` accepts bigint, integer text, or a safe integer number. Prefer
+`satoshis`; the historical fallback `value` still denotes raw units here.
+Unsafe numbers are rejected because their original precision cannot be recovered.
+The Neurai monetary maximum is 2100000000000000000 raw units, rather than
+Bitcoin's monetary limit. Asset quantity remains separate from the XNA nValue
+used in the signature hash (zero for standard asset-wrapped outputs).
+
+bitcoinjs v7 byte arrays are Uint8Array. This package still returns signed
+transaction hex; callers do not need to decode its internal byte arrays.

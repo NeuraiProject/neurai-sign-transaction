@@ -1,3 +1,4 @@
+import { assertMoneyRange } from '@neuraiproject/neurai-create-transaction/amounts';
 import * as bitcoin from "bitcoinjs-lib";
 import { Buffer } from "buffer";
 import { ECPairFactory } from "ecpair";
@@ -144,9 +145,9 @@ export interface IUTXO {
    * supplied.
    */
   script: string;
-  satoshis: number;
+  satoshis: number | bigint | string;
   height?: number;
-  value: number;
+  value: number | bigint | string;
   /**
    * Optional signing hint for non-standard prevouts (currently: partial-fill
    * covenant cancel branches). Ignored for recognised legacy/PQ prevouts.
@@ -312,13 +313,8 @@ function getAuthScriptProgram(scriptPubKey: Buffer): Buffer {
   return scriptPubKey.subarray(2, AUTHSCRIPT_PREFIX_LENGTH);
 }
 
-function getUTXOAmount(utxo: IUTXO): number {
-  const amount = utxo.satoshis ?? utxo.value;
-  if (!Number.isSafeInteger(amount) || amount < 0) {
-    throw new Error(`Invalid amount for UTXO ${utxo.txid}:${utxo.outputIndex}`);
-  }
-
-  return amount;
+function getUTXOAmount(utxo: IUTXO): bigint {
+  return assertMoneyRange(utxo.satoshis ?? utxo.value, `UTXO ${utxo.txid}:${utxo.outputIndex}`);
 }
 
 /**
@@ -343,7 +339,7 @@ function getUTXOAmount(utxo: IUTXO): number {
  * `bareScriptHint` are expected to provide a UTXO whose `satoshis` field
  * already reflects the real nValue.
  */
-function getSighashAmount(utxo: IUTXO): number {
+function getSighashAmount(utxo: IUTXO): bigint {
   if (typeof utxo.script !== "string" || utxo.script.length === 0) {
     return getUTXOAmount(utxo);
   }
@@ -362,7 +358,7 @@ function getSighashAmount(utxo: IUTXO): number {
       : -1;
 
   if (assetOffset >= 0 && scriptPubKey.length > assetOffset && scriptPubKey[assetOffset] === OP_XNA_ASSET) {
-    return 0;
+    return 0n;
   }
 
   return getUTXOAmount(utxo);
@@ -410,7 +406,7 @@ function encodeVarInt(value: number): Buffer {
   return out;
 }
 
-function encodeVarSlice(buffer: Buffer): Buffer {
+function encodeVarSlice(buffer: Uint8Array): Buffer {
   return Buffer.concat([encodeVarInt(buffer.length), buffer]);
 }
 
@@ -684,7 +680,7 @@ function hashForAuthScript(
   tx: bitcoin.Transaction,
   inIndex: number,
   witnessScript: Buffer,
-  amount: number,
+  amount: bigint,
   hashType: number,
   authType: number,
   refInputs: IRefInputsData | null = null
@@ -911,11 +907,9 @@ export function sign(
     }
   }
 
+  assertMoneyRange(decoded.outputs.reduce((sum, out) => sum + assertMoneyRange(out.valueSats), 0n), 'total outputs');
   for (const out of decoded.outputs) {
-    const value = Number(out.valueSats);
-    if (!Number.isSafeInteger(value) || value < 0) {
-      throw new Error(`Output value ${out.valueSats} out of safe integer range`);
-    }
+    const value = assertMoneyRange(out.valueSats, 'output');
     tx.addOutput(bufferFromHex(out.scriptPubKeyHex, "output script"), value);
   }
 
@@ -1131,7 +1125,7 @@ export function sign(
         );
         const witnessStack = buildAuthScriptWitnessNoAuth({
           args: buildCancelWitnessStack(
-            signatureWithHashType,
+            Buffer.from(signatureWithHashType),
             Buffer.from(keyPair.publicKey)
           ),
           witnessScript: covenantScriptBytes,
@@ -1300,7 +1294,7 @@ export function sign(
         const signatureWithHashType = Buffer.concat([signature, Buffer.from([HASH_TYPE])]);
         witnessStack = [
           Buffer.from([PQ_AUTHSCRIPT_TYPE]),
-          signatureWithHashType,
+          Buffer.from(signatureWithHashType),
           pqMaterial.serializedPublicKey,
           ...spendTemplate.functionalArgs,
           spendTemplate.witnessScript,
@@ -1323,7 +1317,7 @@ export function sign(
         );
         witnessStack = [
           Buffer.from([LEGACY_AUTHSCRIPT_TYPE]),
-          signatureWithHashType,
+          Buffer.from(signatureWithHashType),
           Buffer.from(keyPair.publicKey),
           ...spendTemplate.functionalArgs,
           spendTemplate.witnessScript,
@@ -1339,7 +1333,7 @@ export function sign(
         witness0Len: tx.ins[i].witness?.[0]?.length ?? 0,
         witness1Len: tx.ins[i].witness?.[1]?.length ?? 0,
         witness2Len: tx.ins[i].witness?.[2]?.length ?? 0,
-        witnessLastHex: tx.ins[i].witness?.[tx.ins[i].witness.length - 1]?.toString("hex") ?? null,
+        witnessLastHex: tx.ins[i].witness?.length ? Buffer.from(tx.ins[i].witness[tx.ins[i].witness.length - 1]).toString("hex") : null,
       });
       continue;
     }
