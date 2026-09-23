@@ -6,10 +6,12 @@
 //   2. Compile the consumers in types-test/ (*.ts ESM, *.cts CommonJS)
 //      against the installed package with skipLibCheck: false: NodeNext,
 //      Node16 and Bundler with the TypeScript of this repository, and Node16
-//      with the oldest supported TypeScript (MIN_TYPESCRIPT, the first release
-//      with node16).
+//      with the oldest supported TypeScript (MIN_TYPESCRIPT: the first release
+//      with node16, or package.json#config.minTypeScript when the package's
+//      declarations need a later one).
 //   3. Load every entry point of package.json#exports at runtime: `import`,
-//      `require` and plain (global bundle) targets.
+//      `require` and plain (global bundle) targets. Wildcard subpaths and
+//      package.json are skipped.
 //   4. For every `import` / `require` condition, check that its declarations
 //      have the module format of the file they describe (ESM for `import`,
 //      CommonJS for `require`; TypeScript decides it from the extension and
@@ -24,9 +26,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MIN_TYPESCRIPT = "4.7.4";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+const MIN_TYPESCRIPT = pkg.config?.minTypeScript ?? "4.7.4";
 const ts = createRequire(join(ROOT, "package.json"))("typescript");
 
 const failures = [];
@@ -155,6 +157,10 @@ try {
 
   for (const [subpath, conditions] of entries()) {
     const specifier = subpath === "." ? pkg.name : `${pkg.name}/${subpath.replace(/^\.\//, "")}`;
+    if (subpath.includes("*") || subpath.endsWith(".json")) {
+      console.log(`skip ${specifier}`);
+      continue;
+    }
     const typesOf = (condition) =>
       typeof conditions[condition] === "object" ? conditions[condition].types : conditions.types;
     if (conditions.import) {

@@ -4,6 +4,14 @@ Signs a Neurai transaction.
 
 The purpose of this project is to enable signing XNA, asset and AuthScript inputs in pure JavaScript for every Neurai address type: classic P2PKH, generic AuthScript witness v1 with its three auth types (NoAuth, PQ and Legacy), strict PQ witness v2 and strict ECDSA witness v3.
 
+## 3.0.2: TypeScript 5.9
+
+Development only: TypeScript `^5.9.3` (was `5.8.3`) and the package check
+(`npm run test:package`) can raise the oldest supported TypeScript through
+`package.json#config.minTypeScript`. Three sighash accumulators in
+`src/shared.ts` are annotated as `Buffer`, which TypeScript 5.9 requires. The
+built JavaScript and the type declarations are the same as in 3.0.1.
+
 ## 3.0.1: ESM type declarations
 
 The package is CommonJS (no `"type": "module"`), so TypeScript read its only

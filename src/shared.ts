@@ -749,9 +749,9 @@ function hashForAuthScript(
   const baseType = hashType & 0x1f;
   const anyoneCanPay = (hashType & bitcoin.Transaction.SIGHASH_ANYONECANPAY) !== 0;
 
-  let hashPrevouts = ZERO_32;
-  let hashSequence = ZERO_32;
-  let hashOutputs = ZERO_32;
+  let hashPrevouts: Buffer = ZERO_32;
+  let hashSequence: Buffer = ZERO_32;
+  let hashOutputs: Buffer = ZERO_32;
 
   if (!anyoneCanPay) {
     hashPrevouts = hash256(Buffer.concat(tx.ins.map(serializeOutpoint)));
