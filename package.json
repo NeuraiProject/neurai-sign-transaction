@@ -1,21 +1,26 @@
 {
   "name": "@neuraiproject/neurai-sign-transaction",
   "description": "Signs a Neurai transaction",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "source": "src/index.ts",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
-  "browser": "dist/browser.js",
+  "browser": "dist/browser.mjs",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./browser": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/browser.js"
+      "types": "./dist/index.d.mts",
+      "import": "./dist/browser.mjs"
     },
     "./global": "./dist/NeuraiSignTransaction.global.js"
   },
@@ -33,7 +38,9 @@
     "build:types": "tsc -p tsconfig.types.json && rollup -c rollup.dts.config.mjs",
     "build": "npm run clean && npm run build:js && npm run build:types",
     "prepack": "npm run build",
-    "test": "npm run build && vitest run test.js",
+    "test": "npm run build && vitest run test.js && npm run test:types",
+    "test:types": "tsc -p tsconfig.types-nodenext.json && tsc -p tsconfig.types-node16.json && tsc -p tsconfig.types-bundler.json",
+    "test:package": "npm run build && node scripts/check-package.mjs",
     "test:regtest": "npm run build && vitest run test-regtest.js"
   },
   "repository": {
@@ -51,15 +58,15 @@
   "homepage": "https://github.com/neuraiproject/neurai-sign-transaction#readme",
   "dependencies": {
     "@bitcoinerlab/secp256k1": "1.2.0",
-    "@neuraiproject/neurai-create-transaction": "^0.9.0",
-    "@neuraiproject/neurai-scripts": "^0.9.0",
+    "@neuraiproject/neurai-create-transaction": "^0.9.1",
+    "@neuraiproject/neurai-scripts": "^0.9.1",
     "@noble/post-quantum": "^0.6.0",
     "bitcoinjs-lib": "7.0.1",
     "buffer": "^6.0.3",
     "ecpair": "3.0.1"
   },
   "devDependencies": {
-    "@neuraiproject/neurai-key": "^5.0.1",
+    "@neuraiproject/neurai-key": "^5.0.2",
     "@rollup/plugin-commonjs": "^29.0.2",
     "@rollup/plugin-inject": "^5.0.5",
     "@rollup/plugin-node-resolve": "^16.0.3",

@@ -349,7 +349,7 @@ test("Verify XNA sign ASSET transaction", () => {
 });
 
 test("Verify browser ESM entry exports sign", () => {
-  const browserBundle = fs.readFileSync(path.join(__dirname, "dist/browser.js"), "utf8");
+  const browserBundle = fs.readFileSync(path.join(__dirname, "dist/browser.mjs"), "utf8");
 
   expect(browserBundle).toContain("const Signer = {");
   // Match the ES export statement regardless of how many extra named exports
@@ -848,7 +848,7 @@ test("Verify mixed transaction: Legacy P2PKH + NoAuth + PQ + Legacy AuthScript (
 });
 
 test("Verify browser build does not contain Node require residuals", () => {
-  const browserBundle = fs.readFileSync(path.join(__dirname, "dist/browser.js"), "utf8");
+  const browserBundle = fs.readFileSync(path.join(__dirname, "dist/browser.mjs"), "utf8");
   const browserBundleWithoutComments = browserBundle
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/.*$/gm, "");

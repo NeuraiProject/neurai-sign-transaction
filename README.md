@@ -4,6 +4,29 @@ Signs a Neurai transaction.
 
 The purpose of this project is to enable signing XNA, asset and AuthScript inputs in pure JavaScript for every Neurai address type: classic P2PKH, generic AuthScript witness v1 with its three auth types (NoAuth, PQ and Legacy), strict PQ witness v2 and strict ECDSA witness v3.
 
+## 3.0.1: ESM type declarations
+
+The package is CommonJS (no `"type": "module"`), so TypeScript read its only
+declaration file, `dist/index.d.ts`, as CommonJS for every entry. For
+`import` (which loads the ESM build, `dist/index.mjs`) that typed the default
+import as the whole module: `import Signer from "…"; Signer.getAddressKind(…)`
+compiled under `moduleResolution: "node16"` / `"nodenext"` and failed at
+runtime, because the ESM default export is the `Signer` object (`{ sign }`).
+Named imports were not affected.
+
+- `import` and the browser entry now use ESM declarations
+  (`dist/index.d.mts`); `require` keeps `dist/index.d.ts` (CommonJS).
+- The browser build is `dist/browser.mjs` (was `dist/browser.js`, ESM syntax
+  in a `.js` file of a CommonJS package, which Node had to re-parse). Import
+  it through `@neuraiproject/neurai-sign-transaction/browser` as before.
+- `npm run test:types` compiles ESM, CommonJS and browser consumers
+  (`types-test/`) against the built declarations (NodeNext, Node16, Bundler;
+  `skipLibCheck: false`), and `npm run test:package` checks the packed tarball
+  in a clean project, with TypeScript 4.7 too, including that every
+  declaration has the module format of the file it describes.
+
+No runtime or API change.
+
 ## 3.0.0: address types of neurai-key 5
 
 | Prevout scriptPubKey | Address | Signed as |

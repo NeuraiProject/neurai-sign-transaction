@@ -17596,4 +17596,4 @@ function dummyCovenantWitness(hint) {
 }
 
 export { VBYTES, Signer as default, estimateInputVbytes, estimateOutputBytes, estimateTransactionVbytes, estimateVirtualSize, getAddressKind, getScriptKind, isPQAddress, isPQScript, sign };
-//# sourceMappingURL=browser.js.map
+//# sourceMappingURL=browser.mjs.map
