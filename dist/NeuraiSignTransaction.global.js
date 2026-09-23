@@ -13676,10 +13676,17 @@
     }
 
     /**
-     * AuthScript (witness v1) scriptPubKey + witness-stack builders.
+     * AuthScript scriptPubKey + witness-stack builders.
      *
-     * AuthScript outputs encode a 32-byte commitment in a witness v1 program:
-     *   scriptPubKey = OP_1 0x20 <32-byte program>
+     * AuthScript outputs encode a 32-byte commitment in a witness program:
+     *   scriptPubKey = OP_n 0x20 <32-byte program>
+     *
+     *   OP_1  generic AuthScript v1 (nc1p… / tnc1p…): any auth type, any witnessScript
+     *   OP_2  strict PQ v2 (pq1z… / tpq1z…): auth type 0x01, witnessScript OP_TRUE
+     *   OP_3  strict ECDSA v3 (nq1r… / tnq1r…): auth type 0x02, witnessScript OP_TRUE
+     *
+     * The witness version is also the first byte of the commitment preimage:
+     *   tagged_hash("NeuraiAuthScript", version || auth_descriptor || SHA256(witnessScript))
      *
      * The program is `HASH160`/`SHA256` over a descriptor that depends on the
      * `auth_type` byte carried as the first witness-stack element at spend time.
@@ -14050,8 +14057,8 @@
      *     <prefix scriptPubKey bytes> OP_XNA_ASSET <pushdata(payload)> OP_DROP
      *
      * where `prefix` is the recipient's standard script (typically a P2PKH, an
-     * AuthScript witness v1, or a bare covenant such as the partial-fill sell
-     * order), and `payload` serializes a `CAssetTransfer`:
+     * AuthScript `OP_1`/`OP_2`/`OP_3` witness program, or a bare covenant such
+     * as the partial-fill sell order), and `payload` serializes a `CAssetTransfer`:
      *
      *     payload = marker ("rvn" 0x72 0x76 0x6e | "xna" 0x78 0x6e 0x61)
      *             || type_marker (0x74 transfer)
@@ -15576,9 +15583,34 @@
         return hash256$1(bufferExports.Buffer.concat(parts));
     }
 
+    // Chain parameters. The signer only reads the WIF version byte (`private`);
+    // every neurai-key 5 network label of a chain shares it, whatever its address
+    // type. `bip44` is informative only (Legacy coin type; neurai-key 5 derives
+    // the ECDSA witness v3 keys under m/84'/1900' and the historical coin type 0
+    // under its xna-old-legacy network).
     const xna = {
         mainnet: {
+            name: "Neurai",
+            unit: "XNA",
+            symbol: "xna",
+            decimalPlaces: 100000000,
             messagePrefix: "Neurai Signed Message:\n",
+            confirmations: 6,
+            website: "https://neurai.org/",
+            projectUrl: "https://github.com/NeuraiProject",
+            id: "94C49B3B-2C88-4408-B566-3D277C596778",
+            network: "mainnet",
+            hashGenesisBlock: "00000044d33c0c0ba019be5c0249730424a69cb4c222153322f68c6104484806",
+            port: 19000,
+            portRpc: 19001,
+            protocol: {
+                magic: 1381320014,
+            },
+            seedsDns: [
+                "seed1.neurai.org",
+                "seed2.neurai.org",
+                "neurai-ipv4.neuraiexplorer.com",
+            ],
             versions: {
                 bip32: {
                     private: 76066276,
@@ -15591,7 +15623,27 @@
             },
         },
         testnet: {
+            name: "Neurai",
+            unit: "XNA",
+            symbol: "xna",
+            decimalPlaces: 100000000,
             messagePrefix: "Neurai Signed Message:\n",
+            confirmations: 6,
+            website: "https://neurai.org/",
+            projectUrl: "https://github.com/NeuraiProject",
+            id: "1EB2ACBA-E8E0-4970-BB20-37DA4B70F6A6",
+            network: "testnet",
+            hashGenesisBlock: "0000006af8b8297448605b0283473ec712f9768f81cc7eae6269b875dee3b0cf",
+            port: 19100,
+            portRpc: 19101,
+            protocol: {
+                magic: 1313166674,
+            },
+            seedsDns: [
+                "testnet1.neuracrypt.org",
+                "testnet2.neuracrypt.org",
+                "testnet3.neuracrypt.org",
+            ],
             versions: {
                 bip32: {
                     private: 70615956,
@@ -15601,52 +15653,6 @@
                 private: 239,
                 public: 127,
                 scripthash: 196,
-            },
-        },
-    };
-
-    const xnaLegacy = {
-        mainnet: {
-            messagePrefix: "Neurai Signed Message:\n",
-            versions: {
-                bip32: {
-                    private: 76066276,
-                    public: 76067358,
-                },
-                bip44: 0,
-                private: 128,
-                public: 53,
-                scripthash: 117,
-            },
-        },
-        testnet: {
-            messagePrefix: "Neurai Signed Message:\n",
-            versions: {
-                bip32: {
-                    private: 70615956,
-                    public: 70617039,
-                },
-                bip44: 1,
-                private: 239,
-                public: 127,
-                scripthash: 196,
-            },
-        },
-    };
-
-    const xnaPQ = {
-        mainnet: {
-            hrp: "nq",
-            bip32: {
-                private: 76066276,
-                public: 76067358,
-            },
-        },
-        testnet: {
-            hrp: "tnq",
-            bip32: {
-                private: 70615956,
-                public: 70617039,
             },
         },
     };
@@ -15656,7 +15662,11 @@
     const LEGACY_PREFIX_LENGTH = 25;
     const AUTHSCRIPT_PREFIX_LENGTH = 34;
     const AUTHSCRIPT_TAG = "NeuraiAuthScript";
-    const AUTHSCRIPT_VERSION = 0x01;
+    // Witness versions of the AuthScript families. The version is the first byte
+    // of the commitment preimage and, for the strict families, part of the sighash.
+    const AUTHSCRIPT_WITNESS_V1 = 0x01; // generic AuthScript (nc1p… / tnc1p…)
+    const STRICT_PQ_WITNESS_V2 = 0x02; // strict PQ (pq1z… / tpq1z…)
+    const STRICT_ECDSA_WITNESS_V3 = 0x03; // strict ECDSA (nq1r… / tnq1r…)
     const NOAUTH_TYPE = 0x00;
     const PQ_AUTHSCRIPT_TYPE = 0x01;
     const LEGACY_AUTHSCRIPT_TYPE = 0x02;
@@ -15685,16 +15695,17 @@
             wif: network.versions.private,
         };
     }
-    function toBitcoinJSPQ(baseNetwork, pqNetwork) {
-        return {
-            ...toBitcoinJS(baseNetwork),
-            bech32: pqNetwork.hrp,
-            bip32: {
-                public: pqNetwork.bip32.public,
-                private: pqNetwork.bip32.private,
-            },
-        };
-    }
+    const NETWORK_CHAIN = {
+        xna: "mainnet",
+        "xna-legacy": "mainnet",
+        "xna-old-legacy": "mainnet",
+        "xna-pq": "mainnet",
+        "xna-authscript": "mainnet",
+        "xna-test": "testnet",
+        "xna-legacy-test": "testnet",
+        "xna-pq-test": "testnet",
+        "xna-authscript-test": "testnet",
+    };
     function isHexString(value) {
         return /^[0-9a-f]+$/i.test(value) && value.length % 2 === 0;
     }
@@ -15724,10 +15735,24 @@
             script[23] === OPS$1.OP_EQUALVERIFY &&
             script[24] === OPS$1.OP_CHECKSIG);
     }
-    function isPQScript(script) {
-        return (script.length >= AUTHSCRIPT_PREFIX_LENGTH &&
-            script[0] === OPS$1.OP_1 &&
-            script[1] === 0x20);
+    /**
+     * Witness version of an AuthScript prevout (`OP_n 0x20 <32B>`, possibly
+     * followed by an asset wrapper): 1 generic, 2 strict PQ, 3 strict ECDSA.
+     * Null for any other script.
+     */
+    function getAuthScriptWitnessVersion(script) {
+        if (script.length < AUTHSCRIPT_PREFIX_LENGTH || script[1] !== 0x20)
+            return null;
+        const version = script[0] - (OPS$1.OP_1 - 1);
+        return version === AUTHSCRIPT_WITNESS_V1 ||
+            version === STRICT_PQ_WITNESS_V2 ||
+            version === STRICT_ECDSA_WITNESS_V3
+            ? version
+            : null;
+    }
+    /** Generic AuthScript v1 prefix (`OP_1 0x20 <32B>`). */
+    function isAuthScriptV1Script(script) {
+        return getAuthScriptWitnessVersion(script) === AUTHSCRIPT_WITNESS_V1;
     }
     // NIP-025: asset payload marker + type. NIP-040 renames the marker from the
     // Ravencoin-inherited "rvn" to "xna" (active on testnet/regtest; mainnet
@@ -15744,7 +15769,9 @@
     const XNA_ASSET_TYPE_MARKERS = new Set([0x74, 0x71, 0x6f, 0x72]);
     /**
      * Mirror of the node's `IsAssetAuthScript()` predicate (strict AuthScript
-     * asset parser, script.cpp:340-378): AuthScript-v1 prefix (34 B), then
+     * asset parser, script.cpp:333-339): generic AuthScript-v1 prefix (34 B,
+     * `OP_1` only — the node's NIP-025 predicate does not cover the strict
+     * `OP_2` / `OP_3` families), then
      * `OP_XNA_ASSET` exactly at offset 34, then ONE pushdata element decoded
      * with Script push semantics (direct push / OP_PUSHDATA1/2/4, lengths
      * validated) whose payload starts with "rvn" or "xna" (NIP-040) + a valid
@@ -15754,7 +15781,7 @@
      * count as a wrapper.
      */
     function isAssetAuthScript(scriptPubKey) {
-        if (!isPQScript(scriptPubKey))
+        if (!isAuthScriptV1Script(scriptPubKey))
             return false;
         let offset = AUTHSCRIPT_PREFIX_LENGTH;
         if (scriptPubKey.length <= offset || scriptPubKey[offset] !== OP_XNA_ASSET) {
@@ -15807,11 +15834,11 @@
     // the node: true on testnet/regtest, false on mainnet
     // (chainparams.cpp:135,351,568). Regtest shares the testnet networks here.
     // Revisit this set when a mainnet fork activates the rule.
-    const NETWORKS_WITH_ASSET_AUTHSCRIPT_RBF_BLOCK = new Set(["xna-test", "xna-legacy-test", "xna-pq-test"]);
+    const NETWORKS_WITH_ASSET_AUTHSCRIPT_RBF_BLOCK = new Set(["xna-test", "xna-legacy-test", "xna-pq-test", "xna-authscript-test"]);
     const MIN_NON_RBF_SEQUENCE = 0xfffffffe;
     function getAuthScriptProgram(scriptPubKey) {
-        if (!isPQScript(scriptPubKey)) {
-            throw new Error("AuthScript scriptPubKey must start with OP_1 <32-byte commitment>");
+        if (getAuthScriptWitnessVersion(scriptPubKey) === null) {
+            throw new Error("AuthScript scriptPubKey must start with OP_1/OP_2/OP_3 <32-byte commitment>");
         }
         return scriptPubKey.subarray(2, AUTHSCRIPT_PREFIX_LENGTH);
     }
@@ -15832,8 +15859,8 @@
      *
      * The script itself is the source of truth: if the scriptPubKey has an
      * `OP_XNA_ASSET` byte right after the destination prefix (P2PKH = 25 bytes,
-     * AuthScript v1 = 34 bytes), the output is asset-wrapped and its nValue
-     * is 0.
+     * AuthScript `OP_1`/`OP_2`/`OP_3` = 34 bytes), the output is asset-wrapped
+     * and its nValue is 0.
      *
      * Non-standard prefixes (covenants, bare scripts, unknown witness
      * versions) fall through to `getUTXOAmount`; callers that supply a
@@ -15853,7 +15880,7 @@
         }
         const assetOffset = isLegacyScript(scriptPubKey)
             ? LEGACY_PREFIX_LENGTH
-            : isPQScript(scriptPubKey)
+            : getAuthScriptWitnessVersion(scriptPubKey) !== null
                 ? AUTHSCRIPT_PREFIX_LENGTH
                 : -1;
         if (assetOffset >= 0 && scriptPubKey.length > assetOffset && scriptPubKey[assetOffset] === OP_XNA_ASSET) {
@@ -16001,7 +16028,31 @@
             functionalArgs,
         };
     }
-    function getAuthScriptCommitment(authType, publicKey, witnessScript) {
+    /**
+     * Spend template of a strict family (v2 PQ / v3 ECDSA). Consensus fixes it:
+     * authType bound to the witness version, witnessScript exactly OP_TRUE and
+     * no functional arguments. A key entry may repeat those values (neurai-key 5
+     * address objects carry `authType` and `witnessScript: "51"`), but any other
+     * value is an error instead of being dropped.
+     */
+    function getStrictSpendTemplate(address, privateKeyEntry, witnessVersion) {
+        const authType = witnessVersion === STRICT_PQ_WITNESS_V2 ? PQ_AUTHSCRIPT_TYPE : LEGACY_AUTHSCRIPT_TYPE;
+        const family = witnessVersion === STRICT_PQ_WITNESS_V2 ? "strict PQ (witness v2)" : "strict ECDSA (witness v3)";
+        if (typeof privateKeyEntry !== "string") {
+            if (privateKeyEntry.authType !== undefined && privateKeyEntry.authType !== authType) {
+                throw new Error(`${family} input of ${address} requires authType 0x${authType.toString(16).padStart(2, "0")}, got 0x${privateKeyEntry.authType.toString(16).padStart(2, "0")}`);
+            }
+            if (privateKeyEntry.witnessScript !== undefined &&
+                privateKeyEntry.witnessScript.toLowerCase() !== DEFAULT_PQ_WITNESS_SCRIPT.toString("hex")) {
+                throw new Error(`${family} input of ${address} only admits the OP_TRUE witnessScript ("51"), got "${privateKeyEntry.witnessScript}"`);
+            }
+            if (privateKeyEntry.functionalArgs !== undefined && privateKeyEntry.functionalArgs.length > 0) {
+                throw new Error(`${family} input of ${address} does not take functionalArgs`);
+            }
+        }
+        return { authType, witnessScript: DEFAULT_PQ_WITNESS_SCRIPT, functionalArgs: [] };
+    }
+    function getAuthScriptCommitment(authType, publicKey, witnessScript, witnessVersion = AUTHSCRIPT_WITNESS_V1) {
         let authDescriptor;
         if (authType === NOAUTH_TYPE) {
             authDescriptor = bufferExports.Buffer.from([NOAUTH_TYPE]);
@@ -16029,7 +16080,7 @@
         }
         const witnessScriptHash = sha256(witnessScript);
         const preimage = bufferExports.Buffer.concat([
-            bufferExports.Buffer.from([AUTHSCRIPT_VERSION]),
+            bufferExports.Buffer.from([witnessVersion]),
             authDescriptor,
             witnessScriptHash,
         ]);
@@ -16083,7 +16134,14 @@
         parts.push(locktime, hashTypeBuffer);
         return hash256(bufferExports.Buffer.concat(parts));
     }
-    function hashForAuthScript(tx, inIndex, witnessScript, amount, hashType, authType, refInputs = null) {
+    /**
+     * AuthScript sighash (node `SignatureHash`, interpreter.cpp): BIP-143 layout
+     * with the witnessScript as scriptCode, then `authType` before nHashType.
+     * For the strict families (`strictWitnessVersion` 2 or 3,
+     * SIGVERSION_AUTHSCRIPT_STRICT) the witness version byte goes between
+     * nLockTime and authType, which separates their signatures from generic v1.
+     */
+    function hashForAuthScript(tx, inIndex, witnessScript, amount, hashType, authType, refInputs = null, strictWitnessVersion = null) {
         let hashPrevouts = ZERO_32;
         let hashSequence = ZERO_32;
         let hashOutputs = ZERO_32;
@@ -16125,6 +16183,7 @@
             // ALWAYS — an empty vrefin contributes hash256(""), not a zero hash.
             ...(refInputs ? [hash256(refInputs.concat)] : []),
             locktime,
+            ...(strictWitnessVersion !== null ? [bufferExports.Buffer.from([strictWitnessVersion])] : []),
             bufferExports.Buffer.from([authType]),
             hashTypeBuffer,
         ]);
@@ -16151,18 +16210,12 @@
         };
     }
     function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
-        const networkMapper = {
-            xna: toBitcoinJS(xna.mainnet),
-            "xna-test": toBitcoinJS(xna.testnet),
-            "xna-legacy": toBitcoinJS(xnaLegacy.mainnet),
-            "xna-legacy-test": toBitcoinJS(xnaLegacy.testnet),
-            "xna-pq": toBitcoinJSPQ(xna.mainnet, xnaPQ.mainnet),
-            "xna-pq-test": toBitcoinJSPQ(xna.testnet, xnaPQ.testnet),
-        };
-        const COIN = networkMapper[network];
-        if (!COIN)
-            throw new Error("Invalid network specified");
-        COIN.bech32 = COIN.bech32 || "";
+        const chain = NETWORK_CHAIN[network];
+        if (!chain) {
+            throw new Error(`Invalid network specified: ${JSON.stringify(network)}. Expected one of ${Object.keys(NETWORK_CHAIN).join(", ")}`);
+        }
+        // Only the WIF version byte of COIN is used (ECPair.fromWIF).
+        const COIN = toBitcoinJS(xna[chain]);
         // The codec understands v1/v2/v3 (with vrefin); bitcoinjs alone would
         // misparse a v3 transaction. The bitcoinjs Transaction remains the
         // internal working representation — for v3 it is a "reduced" view that
@@ -16296,19 +16349,23 @@
             }
             const scriptPubKey = bufferExports.Buffer.from(utxo.script, "hex");
             const inputIsLegacy = isLegacyScript(scriptPubKey);
-            const inputIsPQ = isPQScript(scriptPubKey);
+            const witnessVersion = getAuthScriptWitnessVersion(scriptPubKey);
+            const inputIsAuthScript = witnessVersion !== null;
             debug({
                 step: "script-type",
                 i,
                 isLegacy: inputIsLegacy,
-                isPQ: inputIsPQ,
+                witnessVersion,
             });
             const hint = utxo.bareScriptHint;
-            // Covenant branches: the prevout is AuthScript-v1-wrapped
-            // (commitment-to-covenant), so `inputIsPQ` is true. The hint tells
-            // the library the covenant witness script to use and the branch to
-            // take: fill (no signature) or cancel (legacy ECDSA or PQ CSFS).
-            if (inputIsPQ &&
+            if (hint && witnessVersion !== null && witnessVersion !== AUTHSCRIPT_WITNESS_V1) {
+                throw new Error(`${hint.kind} hint for ${txid}:${vout}: covenants live in generic AuthScript v1 outputs, but the prevout is witness v${witnessVersion}`);
+            }
+            // Covenant branches: the prevout is generic AuthScript-v1-wrapped
+            // (commitment-to-covenant). The hint tells the library the covenant
+            // witness script to use and the branch to take: fill (no signature) or
+            // cancel (legacy ECDSA or PQ CSFS).
+            if (witnessVersion === AUTHSCRIPT_WITNESS_V1 &&
                 (hint?.kind === "covenant-cancel-legacy" ||
                     hint?.kind === "covenant-cancel-pq" ||
                     hint?.kind === "covenant-fill")) {
@@ -16464,13 +16521,56 @@
                 });
                 continue;
             }
-            if (!inputIsLegacy && !inputIsPQ) {
+            if (!inputIsLegacy && !inputIsAuthScript) {
                 if (hint) {
                     throw new Error(`${hint.kind} hint requires an AuthScript-v1-wrapped prevout for ${txid}:${vout}, but the prevout script is neither P2PKH nor AuthScript v1`);
                 }
-                throw new Error(`Unsupported prevout script for ${txid}:${vout}. Only legacy P2PKH and Neurai AuthScript witness v1 are supported`);
+                throw new Error(`Unsupported prevout script for ${txid}:${vout}. Supported: legacy P2PKH and Neurai AuthScript witness v1 (generic), v2 (strict PQ) and v3 (strict ECDSA)`);
             }
-            if (inputIsPQ) {
+            if (witnessVersion === STRICT_PQ_WITNESS_V2 || witnessVersion === STRICT_ECDSA_WITNESS_V3) {
+                if (!hasPrivateKeyForAddress(utxo.address)) {
+                    debug({ step: "skip-missing-private-key", i, address: utxo.address });
+                    continue;
+                }
+                const privateKeyEntry = privateKeys[utxo.address];
+                const template = getStrictSpendTemplate(utxo.address, privateKeyEntry, witnessVersion);
+                const actualCommitment = getAuthScriptProgram(scriptPubKey);
+                let publicKey;
+                let signWith;
+                if (witnessVersion === STRICT_PQ_WITNESS_V2) {
+                    const pqMaterial = getPQMaterialByAddress(utxo.address);
+                    publicKey = pqMaterial.serializedPublicKey;
+                    signWith = (sighash) => bufferExports.Buffer.concat([
+                        bufferExports.Buffer.from(ml_dsa44.sign(new Uint8Array(sighash), new Uint8Array(pqMaterial.secretKey), {
+                            extraEntropy: false,
+                        })),
+                        bufferExports.Buffer.from([HASH_TYPE]),
+                    ]);
+                }
+                else {
+                    const keyPair = getKeyPairByAddress(utxo.address);
+                    if (!keyPair.compressed) {
+                        throw new Error(`strict ECDSA (witness v3) input of ${utxo.address} needs a compressed key; the WIF encodes an uncompressed one`);
+                    }
+                    publicKey = bufferExports.Buffer.from(keyPair.publicKey);
+                    signWith = (sighash) => bufferExports.Buffer.from(signature.encode(bufferExports.Buffer.from(keyPair.sign(sighash)), HASH_TYPE));
+                }
+                const expectedCommitment = getAuthScriptCommitment(template.authType, publicKey, template.witnessScript, witnessVersion);
+                if (!actualCommitment.equals(expectedCommitment)) {
+                    throw new Error(`AuthScript commitment mismatch for ${txid}:${vout} (witness v${witnessVersion}). The provided key does not match the prevout script`);
+                }
+                const sighash = hashForAuthScript(tx, i, template.witnessScript, getSighashAmount(utxo), HASH_TYPE, template.authType, refInputs, witnessVersion);
+                tx.setInputScript(i, bufferExports.Buffer.alloc(0));
+                tx.setWitness(i, [
+                    bufferExports.Buffer.from([template.authType]),
+                    signWith(sighash),
+                    publicKey,
+                    template.witnessScript,
+                ]);
+                debug({ step: "strict-witness-set", i, witnessVersion, authType: template.authType });
+                continue;
+            }
+            if (inputIsAuthScript) {
                 const hasPrivateKeyEntry = hasPrivateKeyForAddress(utxo.address);
                 debug({
                     step: "pq-material",

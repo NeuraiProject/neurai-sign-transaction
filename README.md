@@ -2,7 +2,26 @@
 
 Signs a Neurai transaction.
 
-The purpose of this project is to enable signing XNA, asset and AuthScript inputs in pure JavaScript, supporting all three AuthScript auth types (NoAuth, PQ and Legacy) as well as classic P2PKH.
+The purpose of this project is to enable signing XNA, asset and AuthScript inputs in pure JavaScript for every Neurai address type: classic P2PKH, generic AuthScript witness v1 with its three auth types (NoAuth, PQ and Legacy), strict PQ witness v2 and strict ECDSA witness v3.
+
+## 3.0.0: address types of neurai-key 5
+
+| Prevout scriptPubKey | Address | Signed as |
+|---|---|---|
+| `OP_DUP OP_HASH160 <20B> OP_EQUALVERIFY OP_CHECKSIG` | `N…` / `t…` | P2PKH scriptSig |
+| `OP_1 <32B>` | `nc1p…` / `tnc1p…` | generic AuthScript v1 (NoAuth / PQ / Legacy, custom `witnessScript`) |
+| `OP_2 <32B>` | `pq1z…` / `tpq1z…` | strict PQ v2: `[0x01, sig, 0x05‖pqPubKey, OP_TRUE]` |
+| `OP_3 <32B>` | `nq1r…` / `tnq1r…` | strict ECDSA v3: `[0x02, sig, compressedPubKey, OP_TRUE]` |
+
+The input type always comes from the prevout `script`. Breaking changes versus 2.x:
+
+- `OP_2` / `OP_3` prevouts used to throw "Only legacy P2PKH and Neurai AuthScript witness v1 are supported"; they are signed now (see [Strict families](#strict-families-pq-v2-and-ecdsa-v3)).
+- `isPQAddress` / `isPQScript` are deprecated and decode the address instead of checking a prefix: `nq1…` / `tnq1…` is ECDSA witness v3 and returns `false`; `pq1…` / `tpq1…` and `nc1…` / `tnc1…` return `true`. Strings that are not valid Neurai addresses return `false`. Use `getAddressKind` / `getScriptKind`.
+- `estimateInputVbytes` / `estimateOutputBytes` / `estimateTransactionVbytes` decode addresses too: an invalid address is sized as legacy, a v3 input as `VBYTES.ecdsaWitnessInputVbytes` (70), and every witness output as `VBYTES.witnessOutputBytes` (43). The segwit marker is added for any witness input.
+- `network` accepts every neurai-key 5 label (`xna-old-legacy`, `xna-authscript[-test]` are new). Only the chain matters: mainnet labels use the mainnet WIF and `-test` labels the testnet/regtest WIF. An unknown label throws with the list of valid ones.
+- Requires `@neuraiproject/neurai-create-transaction` `^0.9.0` and `@neuraiproject/neurai-scripts` `^0.9.0`.
+
+The strict families are only active on regtest today; generic AuthScript v1 on testnet and regtest. `test-regtest.js` (`npm run test:regtest`, needs a regtest node, see the file header) spends every type with keys from neurai-key 5 and checks that the node accepts them.
 
 ## Package outputs
 
@@ -18,7 +37,7 @@ The preferred consumption path is ESM. The global bundle is kept only for legacy
 
 The `sign` method has four required arguments and one optional argument:
 
-1. network string: `"xna" | "xna-test" | "xna-legacy" | "xna-legacy-test" | "xna-pq" | "xna-pq-test"`
+1. network string, any neurai-key 5 label: `"xna" | "xna-test" | "xna-legacy" | "xna-legacy-test" | "xna-old-legacy" | "xna-pq" | "xna-pq-test" | "xna-authscript" | "xna-authscript-test"` (only its chain is used)
 2. raw transaction hex
 3. array of UTXO objects
 4. private keys object keyed by address/identifier
@@ -28,7 +47,9 @@ This library signs an already-built raw transaction. It does not build the raw t
 
 For legacy P2PKH inputs, the value can be the WIF string directly, or an object like `{ WIF }`.
 
-For AuthScript inputs, the value depends on the `authType`:
+Objects returned by `@neuraiproject/neurai-key` can be passed as they are (`{ WIF, ... }`, `{ seedKey, ... }`).
+
+For generic AuthScript v1 inputs (`nc1p…` / `tnc1p…`), the value depends on the `authType`:
 
 ### NoAuth (`authType: 0x00`)
 
@@ -67,14 +88,22 @@ The signer also supports partial signing flows. Inputs that do not have a matchi
 
 For PQ/AuthScript inputs, the referenced UTXO must include a valid amount in `satoshis` or `value`, because the witness sighash includes the prevout amount.
 
+### Strict families: PQ v2 and ECDSA v3
+
+The node fixes the whole spend template, so there is nothing to configure:
+
+- **PQ v2** (`OP_2`, `pq1z…`): PQ key material as above (a plain hex string is the PQ seed / secret, or `{ seedKey }`, or the neurai-key 5 `getPQAddress` object).
+- **ECDSA v3** (`OP_3`, `nq1r…`): a WIF string or `{ WIF }` (the neurai-key 5 `xna` / `xna-test` object). The key must be compressed; an uncompressed WIF throws.
+
+An entry may repeat the fixed values (`authType` 1 / 2, `witnessScript: "51"`), but any other `authType`, another `witnessScript` or `functionalArgs` throw instead of being ignored. Covenant `bareScriptHint`s only apply to generic v1 prevouts.
+
 ## AuthScript rules
 
-All AuthScript inputs use Neurai AuthScript witness v1 rules:
-
-- prevout must start with `OP_1 <32-byte-commitment>`
-- assets may append the usual asset suffix after the 34-byte AuthScript prefix
-- sighash uses Neurai `SIGVERSION_AUTHSCRIPT`, which is BIP143-style plus `auth_type_byte`
-- default `witnessScript` is `OP_TRUE`; custom templates can be provided via `witnessScript` and `functionalArgs`
+- the prevout starts with `OP_1`, `OP_2` or `OP_3` followed by the 32-byte commitment
+- assets may append the usual asset suffix after the 34-byte AuthScript prefix (the NIP-025 non-RBF rule only covers `OP_1` asset outputs, like in the node)
+- generic v1 sighash uses Neurai `SIGVERSION_AUTHSCRIPT`: BIP143-style, then `auth_type_byte` before the hash type
+- strict v2 / v3 sighash uses `SIGVERSION_AUTHSCRIPT_STRICT`: the same, with the witness version byte between `nLockTime` and `auth_type_byte`. A v1-style signature is rejected on a strict input
+- generic v1: default `witnessScript` is `OP_TRUE`; custom templates can be provided via `witnessScript` and `functionalArgs`. Strict v2 / v3: always `OP_TRUE`, no arguments
 
 ### Commitment reconstruction
 
@@ -86,7 +115,9 @@ The signer reconstructs the commitment and verifies it matches the prevout befor
 | `0x01` PQ | `0x01 \|\| Hash160(0x05 \|\| pqPublicKey)` |
 | `0x02` Legacy | `0x02 \|\| Hash160(compressedSecp256k1PubKey)` |
 
-`commitment = TaggedHash("NeuraiAuthScript", version || auth_descriptor || SHA256(witnessScript))`
+`commitment = TaggedHash("NeuraiAuthScript", witness_version || auth_descriptor || SHA256(witnessScript))`
+
+with `witness_version` 1 (generic), 2 (PQ, authType `0x01`) or 3 (ECDSA, authType `0x02`).
 
 ### Witness stacks
 
@@ -95,8 +126,8 @@ The signer reconstructs the commitment and verifies it matches the prevout befor
 | `0x00` NoAuth | `[0x00, ...functionalArgs, witnessScript]` |
 | `0x01` PQ | `[0x01, ml-dsa44-sig+hashType, 0x05\|\|pqPubKey, ...functionalArgs, witnessScript]` |
 | `0x02` Legacy | `[0x02, ecdsaSig+hashType, compressedPubKey, ...functionalArgs, witnessScript]` |
-
-`xna-pq` and `xna-pq-test` use the PQ bech32 HRPs (`nq` / `tnq`) and PQ bip32 settings.
+| strict PQ v2 | `[0x01, ml-dsa44-sig+hashType, 0x05\|\|pqPubKey, 0x51]` |
+| strict ECDSA v3 | `[0x02, ecdsaSig+hashType, compressedPubKey, 0x51]` |
 
 The method returns a signed transaction hex. Broadcasting it is up to the caller.
 
@@ -106,7 +137,7 @@ import Signer from "@neuraiproject/neurai-sign-transaction";
 const raw = "...";
 const UTXOs = [
   {
-    address: "tnq1yourauthscriptaddress...",
+    address: "tnc1pyourauthscriptaddress...",
     assetName: "XNA",
     txid: "...",
     outputIndex: 0,
@@ -116,26 +147,34 @@ const UTXOs = [
   },
 ];
 const privateKeys = {
-  "tnq1yourauthscriptaddress...": {
+  "tnc1pyourauthscriptaddress...": {
     seedKey: "aabbcc...32-byte-seed-in-hex",
   },
 };
-const signed = Signer.sign("xna-pq-test", raw, UTXOs, privateKeys);
+const signed = Signer.sign("xna-authscript-test", raw, UTXOs, privateKeys);
 console.log(signed);
 ```
 
-Mixed transaction with all auth types:
+Mixed transaction with every address type:
 
 ```js
+import NeuraiKey from "@neuraiproject/neurai-key";
+
+const pq = NeuraiKey.getPQAddress("xna-pq-test", mnemonic, 0, 0);          // tpq1z…
+const ecdsa = NeuraiKey.getAddressPair("xna-test", mnemonic, 0, 0).external; // tnq1r…
+
 const privateKeys = {
   // Legacy P2PKH — plain WIF
   "mgRYHdMq...": "cVP9mzc...",
-  // PQ AuthScript (default authType 0x01)
-  "tnq1pqaddr...": { seedKey: "aabbcc..." },
-  // Legacy AuthScript (authType 0x02)
-  "tnq1legacyaddr...": { WIF: "cVP9mzc...", authType: 2 },
-  // NoAuth (authType 0x00)
-  "tnq1noauthaddr...": { authType: 0 },
+  // Generic AuthScript v1, PQ key (default authType 0x01)
+  "tnc1ppqaddr...": { seedKey: "aabbcc..." },
+  // Generic AuthScript v1, Legacy key (authType 0x02)
+  "tnc1plegacyaddr...": { WIF: "cVP9mzc...", authType: 2 },
+  // Generic AuthScript v1, NoAuth (authType 0x00)
+  "tnc1pnoauthaddr...": { authType: 0 },
+  // Strict PQ v2 and strict ECDSA v3: the neurai-key objects as they are
+  [pq.address]: pq,
+  [ecdsa.address]: ecdsa,
 };
 ```
 
@@ -143,7 +182,7 @@ Example with an explicit custom witnessScript and functional args:
 
 ```js
 const privateKeys = {
-  "tnq1yourauthscriptaddress...": {
+  "tnc1pyourauthscriptaddress...": {
     seedKey: "aabbcc...32-byte-seed-in-hex",
     authType: 0x01,
     witnessScript: "527551", // OP_2 OP_DROP OP_1
@@ -194,17 +233,23 @@ The size constants are exported so that anyone composing transactions can comput
 ```js
 import { VBYTES } from "@neuraiproject/neurai-sign-transaction";
 
-VBYTES.baseTxOverheadBytes; // 10  — version + counts + locktime
-VBYTES.segwitMarkerVbytes;  // 1   — added once when any input is PQ
-VBYTES.legacyInputVbytes;   // 148 — P2PKH spend, worst-case scriptSig
-VBYTES.pqInputVbytes;       // 977 — AuthScript v1 PQ spend with default OP_TRUE script
-VBYTES.legacyOutputBytes;   // 34  — value + script length + 25-byte P2PKH script
-VBYTES.pqOutputBytes;       // 43  — value + script length + 34-byte AuthScript v1 script
+VBYTES.baseTxOverheadBytes;     // 10  — version + counts + locktime
+VBYTES.segwitMarkerVbytes;      // 1   — added once when any input is a witness input
+VBYTES.legacyInputVbytes;       // 148 — P2PKH spend, worst-case scriptSig
+VBYTES.pqInputVbytes;           // 977 — PQ v2 spend, or AuthScript v1 PQ spend with default OP_TRUE script
+VBYTES.ecdsaWitnessInputVbytes; // 70  — strict ECDSA v3 spend
+VBYTES.legacyOutputBytes;       // 34  — value + script length + 25-byte P2PKH script
+VBYTES.witnessOutputBytes;      // 43  — value + script length + 34-byte OP_1/OP_2/OP_3 script
+VBYTES.pqOutputBytes;           // 43  — deprecated alias of witnessOutputBytes
 ```
 
-### `isPQAddress(address)` / `isPQScript(scriptHex)`
+### `getAddressKind(address)` / `getScriptKind(scriptHex)`
 
-Classifiers for distinguishing PQ destinations from legacy ones. PQ addresses use the `nq` (mainnet) and `tnq` (testnet) bech32 HRPs; PQ scripts start with `OP_1 <32-byte commitment>` (`5120…` in hex), including asset-wrapped variants.
+Return `"p2pkh" | "authscript" | "pq" | "ecdsa" | "unknown"`, decoding the address with `neurai-create-transaction` (node HRP/version pairs: `nc`+v1, `pq`+v2, `nq`+v3) or reading the scriptPubKey prefix (asset wrappers are ignored).
+
+### `isPQAddress(address)` / `isPQScript(scriptHex)` (deprecated)
+
+`true` for the address / script types whose spend carries an ML-DSA-44 witness: strict PQ v2 (`pq1z…`, `5220…`) and generic AuthScript v1 (`nc1p…`, `5120…`). Since 3.0.0 `nq1…` / `tnq1…` (ECDSA witness v3, `5320…`) returns `false`. Scripts are matched including asset-wrapped variants.
 
 ### `estimateInputVbytes(utxo)` / `estimateOutputBytes(target)`
 
@@ -217,8 +262,9 @@ import {
 } from "@neuraiproject/neurai-sign-transaction";
 
 estimateInputVbytes({ script: "5120…" });        // 977
+estimateInputVbytes({ script: "5320…" });        // 70
 estimateInputVbytes({ address: "mgRYHdMq…" });   // 148
-estimateOutputBytes("nq1qabc…");                 // 43
+estimateOutputBytes("tpq1z…");                   // 43
 estimateOutputBytes({ address: "mgRYHdMq…" });   // 34
 ```
 
@@ -231,7 +277,7 @@ import { estimateTransactionVbytes } from "@neuraiproject/neurai-sign-transactio
 
 const vbytes = estimateTransactionVbytes(
   [{ script: "5120…" }, { address: "mgRYHdMq…" }],
-  ["nq1qchange…", "mgRYHdMqburn…"],
+  ["tnq1rchange…", "mgRYHdMqburn…"],
 );
 const feeXna = (vbytes / 1000) * feeRateXnaPerKb;
 ```
@@ -262,12 +308,13 @@ Because `estimateVirtualSize` always assumes the worst-case signature size (72-b
 
 ### What `estimateVirtualSize` covers
 
-The estimator classifies each input as legacy or PQ from the UTXO's `script` and assumes the most common spend layout:
+The estimator classifies each input from the UTXO's `script` and assumes the most common spend layout:
 
 - a worst-case P2PKH `scriptSig` (DER signature + compressed pubkey), or
-- a PQ AuthScript witness with the **default** `OP_TRUE` `witnessScript` and **no** `functionalArgs`.
+- a strict ECDSA v3 witness (`[0x02, 73-byte signature, 33-byte key, 0x51]`), or
+- a PQ witness: strict PQ v2, or generic AuthScript v1 with the **default** `OP_TRUE` `witnessScript` and **no** `functionalArgs`.
 
-That covers the normal flows: ordinary XNA / asset / asset-creation transactions where every input is either legacy P2PKH or simple PQ AuthScript. For these, the returned vsize is exact within ±2 vbytes.
+That covers the normal flows: ordinary XNA / asset / asset-creation transactions where every input is legacy P2PKH, strict PQ / ECDSA or simple PQ AuthScript v1. For these, the returned vsize is exact within ±3 vbytes (checked against the node in `test-regtest.js`).
 
 ### Limitations
 
@@ -277,7 +324,7 @@ The estimator does not currently inspect the `privateKeys` map and does not acce
 |------|--------|
 | PQ AuthScript with custom `witnessScript` and/or `functionalArgs` (covenants) | **Under-estimates** by `len(witnessScript) - 1 + sum(len(functionalArgs))` weight units divided by 4 — risks `min relay fee not met` |
 | `authType: 0x00` NoAuth (no signature, no pubkey) | Over-estimates by ≈ 925 vbytes — safe but wasteful |
-| `authType: 0x02` Legacy AuthScript (ECDSA inside the AuthScript witness, not PQ) | Over-estimates by ≈ 925 vbytes — safe but wasteful |
+| `authType: 0x02` Legacy AuthScript v1 (ECDSA inside the generic AuthScript witness, not PQ) | Over-estimates by ≈ 925 vbytes — safe but wasteful (strict ECDSA v3 inputs are sized exactly) |
 | `bareScriptHint` covenant-cancel branches | Witness includes the covenant script and selector byte, neither of which the estimator can size |
 
 If you build covenant spends, NoAuth witnesses, or Legacy AuthScript witnesses programmatically, compute the witness size yourself and add it to `VBYTES.baseTxOverheadBytes + sum(estimateOutputBytes)`. The exotic-witness path may grow a `signingHints` parameter in a future minor version.

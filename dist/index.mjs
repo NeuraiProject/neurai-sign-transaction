@@ -1653,33 +1653,33 @@ OPS.OP_RESERVED; // OP_1 - 1
 // Makes the utils un-importable in browsers without a bundler.
 // Once node.js 18 is deprecated (2025-04-30), we can just drop the import.
 /** Checks if something is Uint8Array. Be careful: nodejs Buffer will return true. */
-function isBytes$1(a) {
+function isBytes$2(a) {
     return a instanceof Uint8Array || (ArrayBuffer.isView(a) && a.constructor.name === 'Uint8Array');
 }
 /** Asserts something is Uint8Array. */
-function abytes$1(b, ...lengths) {
-    if (!isBytes$1(b))
+function abytes$2(b, ...lengths) {
+    if (!isBytes$2(b))
         throw new Error('Uint8Array expected');
     if (lengths.length > 0 && !lengths.includes(b.length))
         throw new Error('Uint8Array expected of length ' + lengths + ', got length=' + b.length);
 }
 /** Asserts a hash instance has not been destroyed / finished */
-function aexists$1(instance, checkFinished = true) {
+function aexists$2(instance, checkFinished = true) {
     if (instance.destroyed)
         throw new Error('Hash instance has been destroyed');
     if (checkFinished && instance.finished)
         throw new Error('Hash#digest() has already been called');
 }
 /** Asserts output is properly-sized byte array */
-function aoutput$1(out, instance) {
-    abytes$1(out);
+function aoutput$2(out, instance) {
+    abytes$2(out);
     const min = instance.outputLen;
     if (out.length < min) {
         throw new Error('digestInto() expects output buffer of length at least ' + min);
     }
 }
 /** Zeroize a byte array. Warning: JS provides no guarantees. */
-function clean$1(...arrays) {
+function clean$2(...arrays) {
     for (let i = 0; i < arrays.length; i++) {
         arrays[i].fill(0);
     }
@@ -1700,7 +1700,7 @@ function rotl(word, shift) {
  * Converts string to bytes using UTF8 encoding.
  * @example utf8ToBytes('abc') // Uint8Array.from([97, 98, 99])
  */
-function utf8ToBytes(str) {
+function utf8ToBytes$1(str) {
     if (typeof str !== 'string')
         throw new Error('string expected');
     return new Uint8Array(new TextEncoder().encode(str)); // https://bugzil.la/1681809
@@ -1710,18 +1710,18 @@ function utf8ToBytes(str) {
  * Warning: when Uint8Array is passed, it would NOT get copied.
  * Keep in mind for future mutable operations.
  */
-function toBytes(data) {
+function toBytes$1(data) {
     if (typeof data === 'string')
-        data = utf8ToBytes(data);
-    abytes$1(data);
+        data = utf8ToBytes$1(data);
+    abytes$2(data);
     return data;
 }
 /** For runtime check if class implements interface */
-class Hash {
-}
+let Hash$1 = class Hash {
+};
 /** Wraps hash function, creating an interface on top of it */
-function createHasher$1(hashCons) {
-    const hashC = (msg) => hashCons().update(toBytes(msg)).digest();
+function createHasher$2(hashCons) {
+    const hashC = (msg) => hashCons().update(toBytes$1(msg)).digest();
     const tmp = hashCons();
     hashC.outputLen = tmp.outputLen;
     hashC.blockLen = tmp.blockLen;
@@ -1734,7 +1734,7 @@ function createHasher$1(hashCons) {
  * @module
  */
 /** Polyfill for Safari 14. https://caniuse.com/mdn-javascript_builtins_dataview_setbiguint64 */
-function setBigUint64(view, byteOffset, value, isLE) {
+function setBigUint64$1(view, byteOffset, value, isLE) {
     if (typeof view.setBigUint64 === 'function')
         return view.setBigUint64(byteOffset, value, isLE);
     const _32n = BigInt(32);
@@ -1758,7 +1758,7 @@ function Maj(a, b, c) {
  * Merkle-Damgard hash construction base class.
  * Could be used to create MD5, RIPEMD, SHA1, SHA2.
  */
-class HashMD extends Hash {
+class HashMD extends Hash$1 {
     constructor(blockLen, outputLen, padOffset, isLE) {
         super();
         this.finished = false;
@@ -1773,9 +1773,9 @@ class HashMD extends Hash {
         this.view = createView(this.buffer);
     }
     update(data) {
-        aexists$1(this);
-        data = toBytes(data);
-        abytes$1(data);
+        aexists$2(this);
+        data = toBytes$1(data);
+        abytes$2(data);
         const { view, buffer, blockLen } = this;
         const len = data.length;
         for (let pos = 0; pos < len;) {
@@ -1800,8 +1800,8 @@ class HashMD extends Hash {
         return this;
     }
     digestInto(out) {
-        aexists$1(this);
-        aoutput$1(out, this);
+        aexists$2(this);
+        aoutput$2(out, this);
         this.finished = true;
         // Padding
         // We can avoid allocation of buffer for padding completely if it
@@ -1810,7 +1810,7 @@ class HashMD extends Hash {
         let { pos } = this;
         // append the bit '1' to the message
         buffer[pos++] = 0b10000000;
-        clean$1(this.buffer.subarray(pos));
+        clean$2(this.buffer.subarray(pos));
         // we have less than padOffset left in buffer, so we cannot put length in
         // current block, need process it and pad again
         if (this.padOffset > blockLen - pos) {
@@ -1823,7 +1823,7 @@ class HashMD extends Hash {
         // Note: sha512 requires length to be 128bit integer, but length in JS will overflow before that
         // You need to write around 2 exabytes (u64_max / 8 / (1024**6)) for this to happen.
         // So we just write lowest 64 bits of that value.
-        setBigUint64(view, blockLen - 8, BigInt(this.length * 8), isLE);
+        setBigUint64$1(view, blockLen - 8, BigInt(this.length * 8), isLE);
         this.process(view, 0);
         const oview = createView(out);
         const len = this.outputLen;
@@ -1972,11 +1972,11 @@ class RIPEMD160 extends HashMD {
         this.set((this.h1 + cl + dr) | 0, (this.h2 + dl + er) | 0, (this.h3 + el + ar) | 0, (this.h4 + al + br) | 0, (this.h0 + bl + cr) | 0);
     }
     roundClean() {
-        clean$1(BUF_160);
+        clean$2(BUF_160);
     }
     destroy() {
         this.destroyed = true;
-        clean$1(this.buffer);
+        clean$2(this.buffer);
         this.set(0, 0, 0, 0, 0);
     }
 }
@@ -1985,7 +1985,7 @@ class RIPEMD160 extends HashMD {
  * * https://homes.esat.kuleuven.be/~bosselae/ripemd160.html
  * * https://homes.esat.kuleuven.be/~bosselae/ripemd160/pdf/AB-9601/AB-9601.pdf
  */
-const ripemd160$1 = /* @__PURE__ */ createHasher$1(() => new RIPEMD160());
+const ripemd160$1 = /* @__PURE__ */ createHasher$2(() => new RIPEMD160());
 
 /**
  * RIPEMD-160 legacy hash function.
@@ -2021,7 +2021,7 @@ const SHA256_K = /* @__PURE__ */ Uint32Array.from([
 ]);
 /** Reusable temporary buffer. "W" comes straight from spec. */
 const SHA256_W = /* @__PURE__ */ new Uint32Array(64);
-class SHA256 extends HashMD {
+let SHA256$1 = class SHA256 extends HashMD {
     constructor(outputLen = 32) {
         super(64, outputLen, 8, false);
         // We cannot use array here since array allows indexing by variable
@@ -2089,13 +2089,13 @@ class SHA256 extends HashMD {
         this.set(A, B, C, D, E, F, G, H);
     }
     roundClean() {
-        clean$1(SHA256_W);
+        clean$2(SHA256_W);
     }
     destroy() {
         this.set(0, 0, 0, 0, 0, 0, 0, 0);
-        clean$1(this.buffer);
+        clean$2(this.buffer);
     }
-}
+};
 /**
  * SHA2-256 hash function from RFC 4634.
  *
@@ -2103,7 +2103,7 @@ class SHA256 extends HashMD {
  * To break sha256 using birthday attack, attackers need to try 2^128 hashes.
  * BTC network is doing 2^70 hashes/sec (2^95 hashes/year) as per 2025.
  */
-const sha256$2 = /* @__PURE__ */ createHasher$1(() => new SHA256());
+const sha256$4 = /* @__PURE__ */ createHasher$2(() => new SHA256$1());
 
 /**
  * SHA2-256 a.k.a. sha256. In JS, it is the fastest hash, even faster than Blake3.
@@ -2116,7 +2116,7 @@ const sha256$2 = /* @__PURE__ */ createHasher$1(() => new SHA256());
  * @deprecated
  */
 /** @deprecated Use import from `noble/hashes/sha2` module */
-const sha256$1 = sha256$2;
+const sha256$3 = sha256$4;
 
 /**
  * A module for hashing functions.
@@ -2131,7 +2131,7 @@ const sha256$1 = sha256$2;
  * @returns The HASH160 of the input buffer.
  */
 function hash160$1(buffer) {
-  return ripemd160(sha256$1(buffer));
+  return ripemd160(sha256$3(buffer));
 }
 /**
  * Computes the double SHA-256 hash of the given buffer.
@@ -2140,7 +2140,7 @@ function hash160$1(buffer) {
  * @returns The double SHA-256 hash of the input buffer.
  */
 function hash256$2(buffer) {
-  return sha256$1(sha256$1(buffer));
+  return sha256$3(sha256$3(buffer));
 }
 /**
  * A collection of tagged hash prefixes used in various BIP (Bitcoin Improvement Proposals)
@@ -2223,7 +2223,7 @@ const TAGGED_HASH_PREFIXES = {
  * @returns The resulting tagged hash as a `Uint8Array`.
  */
 function taggedHash$1(prefix, data) {
-  return sha256$1(concat$2([TAGGED_HASH_PREFIXES[prefix], data]));
+  return sha256$3(concat$2([TAGGED_HASH_PREFIXES[prefix], data]));
 }
 
 // base-x encoding / decoding
@@ -2351,9 +2351,9 @@ function base$2 (ALPHABET) {
 }
 
 var ALPHABET$2 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-var base58 = base$2(ALPHABET$2);
+var base58$1 = base$2(ALPHABET$2);
 
-function bs58checkBase (checksumFn) {
+function bs58checkBase$1 (checksumFn) {
     // Encode a buffer as a base58-check encoded string
     function encode(payload) {
         var payloadU8 = Uint8Array.from(payload);
@@ -2362,7 +2362,7 @@ function bs58checkBase (checksumFn) {
         var both = new Uint8Array(length);
         both.set(payloadU8, 0);
         both.set(checksum.subarray(0, 4), payloadU8.length);
-        return base58.encode(both);
+        return base58$1.encode(both);
     }
     function decodeRaw(buffer) {
         var payload = buffer.slice(0, -4);
@@ -2378,13 +2378,13 @@ function bs58checkBase (checksumFn) {
     }
     // Decode a base58-check encoded string to a buffer, no result if checksum is wrong
     function decodeUnsafe(str) {
-        var buffer = base58.decodeUnsafe(str);
+        var buffer = base58$1.decodeUnsafe(str);
         if (buffer == null)
             return;
         return decodeRaw(buffer);
     }
     function decode(str) {
-        var buffer = base58.decode(str);
+        var buffer = base58$1.decode(str);
         var payload = decodeRaw(buffer);
         if (payload == null)
             throw new Error('Invalid checksum');
@@ -2398,10 +2398,10 @@ function bs58checkBase (checksumFn) {
 }
 
 // SHA256(SHA256(buffer))
-function sha256x2(buffer) {
-    return sha256$1(sha256$1(buffer));
+function sha256x2$1(buffer) {
+    return sha256$3(sha256$3(buffer));
 }
-var bs58Check = bs58checkBase(sha256x2);
+var bs58Check = bs58checkBase$1(sha256x2$1);
 
 function getDefaultExportFromCjs (x) {
 	return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
@@ -3279,20 +3279,20 @@ class Transaction {
         bufferWriter.writeSlice(txIn.hash);
         bufferWriter.writeUInt32(txIn.index);
       });
-      hashPrevouts = sha256$1(bufferWriter.end());
+      hashPrevouts = sha256$3(bufferWriter.end());
       bufferWriter = BufferWriter.withCapacity(8 * this.ins.length);
       values.forEach(value => bufferWriter.writeInt64(value));
-      hashAmounts = sha256$1(bufferWriter.end());
+      hashAmounts = sha256$3(bufferWriter.end());
       bufferWriter = BufferWriter.withCapacity(
         prevOutScripts.map(varSliceSize).reduce((a, b) => a + b),
       );
       prevOutScripts.forEach(prevOutScript =>
         bufferWriter.writeVarSlice(prevOutScript),
       );
-      hashScriptPubKeys = sha256$1(bufferWriter.end());
+      hashScriptPubKeys = sha256$3(bufferWriter.end());
       bufferWriter = BufferWriter.withCapacity(4 * this.ins.length);
       this.ins.forEach(txIn => bufferWriter.writeUInt32(txIn.sequence));
-      hashSequences = sha256$1(bufferWriter.end());
+      hashSequences = sha256$3(bufferWriter.end());
     }
     if (!(isNone || isSingle)) {
       if (!this.outs.length)
@@ -3305,7 +3305,7 @@ class Transaction {
         bufferWriter.writeInt64(out.value);
         bufferWriter.writeVarSlice(out.script);
       });
-      hashOutputs = sha256$1(bufferWriter.end());
+      hashOutputs = sha256$3(bufferWriter.end());
     } else if (isSingle && inIndex < this.outs.length) {
       const output = this.outs[inIndex];
       const bufferWriter = BufferWriter.withCapacity(
@@ -3313,7 +3313,7 @@ class Transaction {
       );
       bufferWriter.writeInt64(output.value);
       bufferWriter.writeVarSlice(output.script);
-      hashOutputs = sha256$1(bufferWriter.end());
+      hashOutputs = sha256$3(bufferWriter.end());
     }
     const spendType = (leafHash ? 2 : 0) + (annex ? 1 : 0);
     // Length calculation from:
@@ -3353,7 +3353,7 @@ class Transaction {
     if (annex) {
       const bufferWriter = BufferWriter.withCapacity(varSliceSize(annex));
       bufferWriter.writeVarSlice(annex);
-      sigMsgWriter.writeSlice(sha256$1(bufferWriter.end()));
+      sigMsgWriter.writeSlice(sha256$3(bufferWriter.end()));
     }
     // Output
     if (isSingle) {
@@ -11928,13 +11928,13 @@ function requireDist$2 () {
 	return dist$2;
 }
 
-var distExports = requireDist$2();
-var index = /*@__PURE__*/getDefaultExportFromCjs(distExports);
+var distExports$1 = requireDist$2();
+var index = /*@__PURE__*/getDefaultExportFromCjs(distExports$1);
 
 var ecc = /*#__PURE__*/_mergeNamespaces({
     __proto__: null,
     default: index
-}, [distExports]);
+}, [distExports$1]);
 
 /**
  * Utilities for hex, bytes, CSPRNG.
@@ -13598,7 +13598,7 @@ const OP_0 = 0x00;
 const OP_PUSHDATA1 = 0x4c;
 const OP_PUSHDATA2 = 0x4d;
 const OP_PUSHDATA4 = 0x4e;
-const OP_1 = 0x51;
+const OP_1$1 = 0x51;
 const OP_2 = 0x52;
 const OP_IF = 0x63;
 const OP_ELSE = 0x67;
@@ -13673,10 +13673,17 @@ function encodeScriptNum(value) {
 }
 
 /**
- * AuthScript (witness v1) scriptPubKey + witness-stack builders.
+ * AuthScript scriptPubKey + witness-stack builders.
  *
- * AuthScript outputs encode a 32-byte commitment in a witness v1 program:
- *   scriptPubKey = OP_1 0x20 <32-byte program>
+ * AuthScript outputs encode a 32-byte commitment in a witness program:
+ *   scriptPubKey = OP_n 0x20 <32-byte program>
+ *
+ *   OP_1  generic AuthScript v1 (nc1p… / tnc1p…): any auth type, any witnessScript
+ *   OP_2  strict PQ v2 (pq1z… / tpq1z…): auth type 0x01, witnessScript OP_TRUE
+ *   OP_3  strict ECDSA v3 (nq1r… / tnq1r…): auth type 0x02, witnessScript OP_TRUE
+ *
+ * The witness version is also the first byte of the commitment preimage:
+ *   tagged_hash("NeuraiAuthScript", version || auth_descriptor || SHA256(witnessScript))
  *
  * The program is `HASH160`/`SHA256` over a descriptor that depends on the
  * `auth_type` byte carried as the first witness-stack element at spend time.
@@ -14047,8 +14054,8 @@ requireDist$1();
  *     <prefix scriptPubKey bytes> OP_XNA_ASSET <pushdata(payload)> OP_DROP
  *
  * where `prefix` is the recipient's standard script (typically a P2PKH, an
- * AuthScript witness v1, or a bare covenant such as the partial-fill sell
- * order), and `payload` serializes a `CAssetTransfer`:
+ * AuthScript `OP_1`/`OP_2`/`OP_3` witness program, or a bare covenant such
+ * as the partial-fill sell order), and `payload` serializes a `CAssetTransfer`:
  *
  *     payload = marker ("rvn" 0x72 0x76 0x6e | "xna" 0x78 0x6e 0x61)
  *             || type_marker (0x74 transfer)
@@ -14361,9 +14368,9 @@ function readPushPositiveInt(c, label) {
         throw new Error(`parse: end of script at ${label}`);
     }
     const opcode = c.bytes[c.pos];
-    if (opcode >= OP_1 && opcode <= 0x60) {
+    if (opcode >= OP_1$1 && opcode <= 0x60) {
         c.pos += 1;
-        return BigInt(opcode - OP_1 + 1);
+        return BigInt(opcode - OP_1$1 + 1);
     }
     const data = readPush(c, label);
     return decodeScriptNum(data, label);
@@ -14385,9 +14392,9 @@ function readPushUint8(c, label) {
         throw new Error(`parse: end of script at ${label}`);
     }
     const opcode = c.bytes[c.pos];
-    if (opcode >= OP_1 && opcode <= 0x60) {
+    if (opcode >= OP_1$1 && opcode <= 0x60) {
         c.pos += 1;
-        return opcode - OP_1 + 1;
+        return opcode - OP_1$1 + 1;
     }
     const data = readPush(c, label);
     if (data.length !== 1) {
@@ -14568,19 +14575,19 @@ function parsePartialFillScript(script, network = 'xna-test') {
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment spk full)');
     // buyer amount == N (full)
     expectByte(c, OP_DUP, 'OP_DUP (buyer amount, full)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
+    expectByte(c, OP_1$1, 'OP_1 (buyer idx, full)');
     expectByte(c, OP_2, 'OP_2 (AMOUNT sel, full)');
     expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, full)');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, full)');
     // buyer name == tokenId (full)
-    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel, full)');
+    expectByte(c, OP_1$1, 'OP_1 (buyer idx, full)');
+    expectByte(c, OP_1$1, 'OP_1 (NAME sel, full)');
     expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, full)');
     const tokenIdFull = readPush(c, 'tokenId (full)');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, full)');
     // tail (full)
     expectByte(c, OP_DROP, 'OP_DROP (full)');
-    expectByte(c, OP_1, 'OP_1 (true, full)');
+    expectByte(c, OP_1$1, 'OP_1 (true, full)');
     expectByte(c, OP_ELSE, 'OP_ELSE (inner → partial fill)');
     // ═════ Inner ELSE — Partial-fill branch ═════
     const expirationPartial = readOptionalExpirationGate(c, OP_DUP, 'partial');
@@ -14603,13 +14610,13 @@ function parsePartialFillScript(script, network = 'xna-test') {
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment spk partial)');
     // Buyer amount
     expectByte(c, OP_DUP, 'OP_DUP (buyer amount, partial)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
+    expectByte(c, OP_1$1, 'OP_1 (buyer idx, partial)');
     expectByte(c, OP_2, 'OP_2 (AMOUNT sel, partial)');
     expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, partial)');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, partial)');
     // Buyer name
-    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel, partial)');
+    expectByte(c, OP_1$1, 'OP_1 (buyer idx, partial)');
+    expectByte(c, OP_1$1, 'OP_1 (NAME sel, partial)');
     expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, partial)');
     const tokenIdPartial1 = readPush(c, 'tokenId partial #1');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, partial)');
@@ -14621,7 +14628,7 @@ function parsePartialFillScript(script, network = 'xna-test') {
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder auth)');
     // Continuation name
     expectByte(c, OP_2, 'OP_2 (remainder idx)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel)');
+    expectByte(c, OP_1$1, 'OP_1 (NAME sel)');
     expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder name)');
     const tokenIdPartial2 = readPush(c, 'tokenId partial #2');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder name)');
@@ -14638,7 +14645,7 @@ function parsePartialFillScript(script, network = 'xna-test') {
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder amount)');
     // Tail (partial)
     expectByte(c, OP_DROP, 'OP_DROP (partial)');
-    expectByte(c, OP_1, 'OP_1 (true, partial)');
+    expectByte(c, OP_1$1, 'OP_1 (true, partial)');
     // Close the nested structure
     expectByte(c, OP_ENDIF, 'OP_ENDIF (inner)');
     expectByte(c, OP_ENDIF, 'OP_ENDIF (outer)');
@@ -14708,17 +14715,17 @@ function parsePartialFillScriptPQ(script, network = 'xna-test') {
     const paymentScriptPubKeyFull = readPush(c, 'paymentScriptPubKey (full)');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment full)');
     expectByte(c, OP_DUP, 'OP_DUP (buyer amount, full)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
+    expectByte(c, OP_1$1, 'OP_1 (buyer idx, full)');
     expectByte(c, OP_2, 'OP_2 (AMOUNT sel, full)');
     expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, full)');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, full)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, full)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel, full)');
+    expectByte(c, OP_1$1, 'OP_1 (buyer idx, full)');
+    expectByte(c, OP_1$1, 'OP_1 (NAME sel, full)');
     expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, full)');
     const tokenIdFull = readPush(c, 'tokenId (full)');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, full)');
     expectByte(c, OP_DROP, 'OP_DROP (full)');
-    expectByte(c, OP_1, 'OP_1 (true, full)');
+    expectByte(c, OP_1$1, 'OP_1 (true, full)');
     expectByte(c, OP_ELSE, 'OP_ELSE (inner → partial fill)');
     // ═════ Inner ELSE — Partial-fill branch ═════
     const expirationPartial = readOptionalExpirationGate(c, OP_DUP, 'partial');
@@ -14735,12 +14742,12 @@ function parsePartialFillScriptPQ(script, network = 'xna-test') {
     const paymentScriptPubKeyPartial = readPush(c, 'paymentScriptPubKey (partial)');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (payment partial)');
     expectByte(c, OP_DUP, 'OP_DUP (buyer amount, partial)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
+    expectByte(c, OP_1$1, 'OP_1 (buyer idx, partial)');
     expectByte(c, OP_2, 'OP_2 (AMOUNT sel, partial)');
     expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer amount, partial)');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer amount, partial)');
-    expectByte(c, OP_1, 'OP_1 (buyer idx, partial)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel, partial)');
+    expectByte(c, OP_1$1, 'OP_1 (buyer idx, partial)');
+    expectByte(c, OP_1$1, 'OP_1 (NAME sel, partial)');
     expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (buyer name, partial)');
     const tokenIdPartial1 = readPush(c, 'tokenId partial #1');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (buyer name, partial)');
@@ -14751,7 +14758,7 @@ function parsePartialFillScriptPQ(script, network = 'xna-test') {
     expectByte(c, OP_TXFIELD, 'OP_TXFIELD');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder auth)');
     expectByte(c, OP_2, 'OP_2 (remainder idx)');
-    expectByte(c, OP_1, 'OP_1 (NAME sel)');
+    expectByte(c, OP_1$1, 'OP_1 (NAME sel)');
     expectByte(c, OP_OUTPUTASSETFIELD, 'OP_OUTPUTASSETFIELD (remainder name)');
     const tokenIdPartial2 = readPush(c, 'tokenId partial #2');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder name)');
@@ -14766,7 +14773,7 @@ function parsePartialFillScriptPQ(script, network = 'xna-test') {
     expectByte(c, OP_SUB, 'OP_SUB');
     expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (remainder amount)');
     expectByte(c, OP_DROP, 'OP_DROP (partial)');
-    expectByte(c, OP_1, 'OP_1 (true, partial)');
+    expectByte(c, OP_1$1, 'OP_1 (true, partial)');
     expectByte(c, OP_ENDIF, 'OP_ENDIF (inner)');
     expectByte(c, OP_ENDIF, 'OP_ENDIF (outer)');
     assertTrailing(c);
@@ -15012,7 +15019,7 @@ function base (ALPHABET) {
 }
 
 var ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-base(ALPHABET);
+var base58 = base(ALPHABET);
 
 var dist = {};
 
@@ -15193,7 +15200,587 @@ function requireDist () {
 	return dist;
 }
 
-requireDist();
+var distExports = requireDist();
+
+/**
+ * Utilities for hex, bytes, CSPRNG.
+ * @module
+ */
+/*! noble-hashes - MIT License (c) 2022 Paul Miller (paulmillr.com) */
+// We use WebCrypto aka globalThis.crypto, which exists in browsers and node.js 16+.
+// node.js versions earlier than v19 don't declare it in global scope.
+// For node.js, package.json#exports field mapping rewrites import
+// from `crypto` to `cryptoNode`, which imports native module.
+// Makes the utils un-importable in browsers without a bundler.
+// Once node.js 18 is deprecated (2025-04-30), we can just drop the import.
+/** Checks if something is Uint8Array. Be careful: nodejs Buffer will return true. */
+function isBytes$1(a) {
+    return a instanceof Uint8Array || (ArrayBuffer.isView(a) && a.constructor.name === 'Uint8Array');
+}
+/** Asserts something is Uint8Array. */
+function abytes$1(b, ...lengths) {
+    if (!isBytes$1(b))
+        throw new Error('Uint8Array expected');
+    if (lengths.length > 0 && !lengths.includes(b.length))
+        throw new Error('Uint8Array expected of length ' + lengths + ', got length=' + b.length);
+}
+/** Asserts a hash instance has not been destroyed / finished */
+function aexists$1(instance, checkFinished = true) {
+    if (instance.destroyed)
+        throw new Error('Hash instance has been destroyed');
+    if (checkFinished && instance.finished)
+        throw new Error('Hash#digest() has already been called');
+}
+/** Asserts output is properly-sized byte array */
+function aoutput$1(out, instance) {
+    abytes$1(out);
+    const min = instance.outputLen;
+    if (out.length < min) {
+        throw new Error('digestInto() expects output buffer of length at least ' + min);
+    }
+}
+/** Zeroize a byte array. Warning: JS provides no guarantees. */
+function clean$1(...arrays) {
+    for (let i = 0; i < arrays.length; i++) {
+        arrays[i].fill(0);
+    }
+}
+/** Create DataView of an array for easy byte-level manipulation. */
+function createView$1(arr) {
+    return new DataView(arr.buffer, arr.byteOffset, arr.byteLength);
+}
+/** The rotate right (circular right shift) operation for uint32 */
+function rotr$1(word, shift) {
+    return (word << (32 - shift)) | (word >>> shift);
+}
+/**
+ * Converts string to bytes using UTF8 encoding.
+ * @example utf8ToBytes('abc') // Uint8Array.from([97, 98, 99])
+ */
+function utf8ToBytes(str) {
+    if (typeof str !== 'string')
+        throw new Error('string expected');
+    return new Uint8Array(new TextEncoder().encode(str)); // https://bugzil.la/1681809
+}
+/**
+ * Normalizes (non-hex) string or Uint8Array to Uint8Array.
+ * Warning: when Uint8Array is passed, it would NOT get copied.
+ * Keep in mind for future mutable operations.
+ */
+function toBytes(data) {
+    if (typeof data === 'string')
+        data = utf8ToBytes(data);
+    abytes$1(data);
+    return data;
+}
+/** For runtime check if class implements interface */
+class Hash {
+}
+/** Wraps hash function, creating an interface on top of it */
+function createHasher$1(hashCons) {
+    const hashC = (msg) => hashCons().update(toBytes(msg)).digest();
+    const tmp = hashCons();
+    hashC.outputLen = tmp.outputLen;
+    hashC.blockLen = tmp.blockLen;
+    hashC.create = () => hashCons();
+    return hashC;
+}
+
+/**
+ * Internal Merkle-Damgard hash utils.
+ * @module
+ */
+/** Polyfill for Safari 14. https://caniuse.com/mdn-javascript_builtins_dataview_setbiguint64 */
+function setBigUint64(view, byteOffset, value, isLE) {
+    if (typeof view.setBigUint64 === 'function')
+        return view.setBigUint64(byteOffset, value, isLE);
+    const _32n = BigInt(32);
+    const _u32_max = BigInt(0xffffffff);
+    const wh = Number((value >> _32n) & _u32_max);
+    const wl = Number(value & _u32_max);
+    const h = isLE ? 4 : 0;
+    const l = isLE ? 0 : 4;
+    view.setUint32(byteOffset + h, wh, isLE);
+    view.setUint32(byteOffset + l, wl, isLE);
+}
+/** Choice: a ? b : c */
+function Chi$1(a, b, c) {
+    return (a & b) ^ (~a & c);
+}
+/** Majority function, true if any two inputs is true. */
+function Maj$1(a, b, c) {
+    return (a & b) ^ (a & c) ^ (b & c);
+}
+/**
+ * Merkle-Damgard hash construction base class.
+ * Could be used to create MD5, RIPEMD, SHA1, SHA2.
+ */
+let HashMD$1 = class HashMD extends Hash {
+    constructor(blockLen, outputLen, padOffset, isLE) {
+        super();
+        this.finished = false;
+        this.length = 0;
+        this.pos = 0;
+        this.destroyed = false;
+        this.blockLen = blockLen;
+        this.outputLen = outputLen;
+        this.padOffset = padOffset;
+        this.isLE = isLE;
+        this.buffer = new Uint8Array(blockLen);
+        this.view = createView$1(this.buffer);
+    }
+    update(data) {
+        aexists$1(this);
+        data = toBytes(data);
+        abytes$1(data);
+        const { view, buffer, blockLen } = this;
+        const len = data.length;
+        for (let pos = 0; pos < len;) {
+            const take = Math.min(blockLen - this.pos, len - pos);
+            // Fast path: we have at least one block in input, cast it to view and process
+            if (take === blockLen) {
+                const dataView = createView$1(data);
+                for (; blockLen <= len - pos; pos += blockLen)
+                    this.process(dataView, pos);
+                continue;
+            }
+            buffer.set(data.subarray(pos, pos + take), this.pos);
+            this.pos += take;
+            pos += take;
+            if (this.pos === blockLen) {
+                this.process(view, 0);
+                this.pos = 0;
+            }
+        }
+        this.length += data.length;
+        this.roundClean();
+        return this;
+    }
+    digestInto(out) {
+        aexists$1(this);
+        aoutput$1(out, this);
+        this.finished = true;
+        // Padding
+        // We can avoid allocation of buffer for padding completely if it
+        // was previously not allocated here. But it won't change performance.
+        const { buffer, view, blockLen, isLE } = this;
+        let { pos } = this;
+        // append the bit '1' to the message
+        buffer[pos++] = 0b10000000;
+        clean$1(this.buffer.subarray(pos));
+        // we have less than padOffset left in buffer, so we cannot put length in
+        // current block, need process it and pad again
+        if (this.padOffset > blockLen - pos) {
+            this.process(view, 0);
+            pos = 0;
+        }
+        // Pad until full block byte with zeros
+        for (let i = pos; i < blockLen; i++)
+            buffer[i] = 0;
+        // Note: sha512 requires length to be 128bit integer, but length in JS will overflow before that
+        // You need to write around 2 exabytes (u64_max / 8 / (1024**6)) for this to happen.
+        // So we just write lowest 64 bits of that value.
+        setBigUint64(view, blockLen - 8, BigInt(this.length * 8), isLE);
+        this.process(view, 0);
+        const oview = createView$1(out);
+        const len = this.outputLen;
+        // NOTE: we do division by 4 later, which should be fused in single op with modulo by JIT
+        if (len % 4)
+            throw new Error('_sha2: outputLen should be aligned to 32bit');
+        const outLen = len / 4;
+        const state = this.get();
+        if (outLen > state.length)
+            throw new Error('_sha2: outputLen bigger than state');
+        for (let i = 0; i < outLen; i++)
+            oview.setUint32(4 * i, state[i], isLE);
+    }
+    digest() {
+        const { buffer, outputLen } = this;
+        this.digestInto(buffer);
+        const res = buffer.slice(0, outputLen);
+        this.destroy();
+        return res;
+    }
+    _cloneInto(to) {
+        to || (to = new this.constructor());
+        to.set(...this.get());
+        const { blockLen, buffer, length, finished, destroyed, pos } = this;
+        to.destroyed = destroyed;
+        to.finished = finished;
+        to.length = length;
+        to.pos = pos;
+        if (length % blockLen)
+            to.buffer.set(buffer);
+        return to;
+    }
+    clone() {
+        return this._cloneInto();
+    }
+};
+/**
+ * Initial SHA-2 state: fractional parts of square roots of first 16 primes 2..53.
+ * Check out `test/misc/sha2-gen-iv.js` for recomputation guide.
+ */
+/** Initial SHA256 state. Bits 0..32 of frac part of sqrt of primes 2..19 */
+const SHA256_IV$1 = /* @__PURE__ */ Uint32Array.from([
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+]);
+
+/**
+ * SHA2 hash function. A.k.a. sha256, sha384, sha512, sha512_224, sha512_256.
+ * SHA256 is the fastest hash implementable in JS, even faster than Blake3.
+ * Check out [RFC 4634](https://datatracker.ietf.org/doc/html/rfc4634) and
+ * [FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
+ * @module
+ */
+/**
+ * Round constants:
+ * First 32 bits of fractional parts of the cube roots of the first 64 primes 2..311)
+ */
+// prettier-ignore
+const SHA256_K$1 = /* @__PURE__ */ Uint32Array.from([
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+]);
+/** Reusable temporary buffer. "W" comes straight from spec. */
+const SHA256_W$1 = /* @__PURE__ */ new Uint32Array(64);
+class SHA256 extends HashMD$1 {
+    constructor(outputLen = 32) {
+        super(64, outputLen, 8, false);
+        // We cannot use array here since array allows indexing by variable
+        // which means optimizer/compiler cannot use registers.
+        this.A = SHA256_IV$1[0] | 0;
+        this.B = SHA256_IV$1[1] | 0;
+        this.C = SHA256_IV$1[2] | 0;
+        this.D = SHA256_IV$1[3] | 0;
+        this.E = SHA256_IV$1[4] | 0;
+        this.F = SHA256_IV$1[5] | 0;
+        this.G = SHA256_IV$1[6] | 0;
+        this.H = SHA256_IV$1[7] | 0;
+    }
+    get() {
+        const { A, B, C, D, E, F, G, H } = this;
+        return [A, B, C, D, E, F, G, H];
+    }
+    // prettier-ignore
+    set(A, B, C, D, E, F, G, H) {
+        this.A = A | 0;
+        this.B = B | 0;
+        this.C = C | 0;
+        this.D = D | 0;
+        this.E = E | 0;
+        this.F = F | 0;
+        this.G = G | 0;
+        this.H = H | 0;
+    }
+    process(view, offset) {
+        // Extend the first 16 words into the remaining 48 words w[16..63] of the message schedule array
+        for (let i = 0; i < 16; i++, offset += 4)
+            SHA256_W$1[i] = view.getUint32(offset, false);
+        for (let i = 16; i < 64; i++) {
+            const W15 = SHA256_W$1[i - 15];
+            const W2 = SHA256_W$1[i - 2];
+            const s0 = rotr$1(W15, 7) ^ rotr$1(W15, 18) ^ (W15 >>> 3);
+            const s1 = rotr$1(W2, 17) ^ rotr$1(W2, 19) ^ (W2 >>> 10);
+            SHA256_W$1[i] = (s1 + SHA256_W$1[i - 7] + s0 + SHA256_W$1[i - 16]) | 0;
+        }
+        // Compression function main loop, 64 rounds
+        let { A, B, C, D, E, F, G, H } = this;
+        for (let i = 0; i < 64; i++) {
+            const sigma1 = rotr$1(E, 6) ^ rotr$1(E, 11) ^ rotr$1(E, 25);
+            const T1 = (H + sigma1 + Chi$1(E, F, G) + SHA256_K$1[i] + SHA256_W$1[i]) | 0;
+            const sigma0 = rotr$1(A, 2) ^ rotr$1(A, 13) ^ rotr$1(A, 22);
+            const T2 = (sigma0 + Maj$1(A, B, C)) | 0;
+            H = G;
+            G = F;
+            F = E;
+            E = (D + T1) | 0;
+            D = C;
+            C = B;
+            B = A;
+            A = (T1 + T2) | 0;
+        }
+        // Add the compressed chunk to the current hash value
+        A = (A + this.A) | 0;
+        B = (B + this.B) | 0;
+        C = (C + this.C) | 0;
+        D = (D + this.D) | 0;
+        E = (E + this.E) | 0;
+        F = (F + this.F) | 0;
+        G = (G + this.G) | 0;
+        H = (H + this.H) | 0;
+        this.set(A, B, C, D, E, F, G, H);
+    }
+    roundClean() {
+        clean$1(SHA256_W$1);
+    }
+    destroy() {
+        this.set(0, 0, 0, 0, 0, 0, 0, 0);
+        clean$1(this.buffer);
+    }
+}
+/**
+ * SHA2-256 hash function from RFC 4634.
+ *
+ * It is the fastest JS hash, even faster than Blake3.
+ * To break sha256 using birthday attack, attackers need to try 2^128 hashes.
+ * BTC network is doing 2^70 hashes/sec (2^95 hashes/year) as per 2025.
+ */
+const sha256$2 = /* @__PURE__ */ createHasher$1(() => new SHA256());
+
+/**
+ * SHA2-256 a.k.a. sha256. In JS, it is the fastest hash, even faster than Blake3.
+ *
+ * To break sha256 using birthday attack, attackers need to try 2^128 hashes.
+ * BTC network is doing 2^70 hashes/sec (2^95 hashes/year) as per 2025.
+ *
+ * Check out [FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
+ * @module
+ * @deprecated
+ */
+/** @deprecated Use import from `noble/hashes/sha2` module */
+const sha256$1 = sha256$2;
+
+function bs58checkBase (checksumFn) {
+    // Encode a buffer as a base58-check encoded string
+    function encode(payload) {
+        var payloadU8 = Uint8Array.from(payload);
+        var checksum = checksumFn(payloadU8);
+        var length = payloadU8.length + 4;
+        var both = new Uint8Array(length);
+        both.set(payloadU8, 0);
+        both.set(checksum.subarray(0, 4), payloadU8.length);
+        return base58.encode(both);
+    }
+    function decodeRaw(buffer) {
+        var payload = buffer.slice(0, -4);
+        var checksum = buffer.slice(-4);
+        var newChecksum = checksumFn(payload);
+        // eslint-disable-next-line
+        if (checksum[0] ^ newChecksum[0] |
+            checksum[1] ^ newChecksum[1] |
+            checksum[2] ^ newChecksum[2] |
+            checksum[3] ^ newChecksum[3])
+            return;
+        return payload;
+    }
+    // Decode a base58-check encoded string to a buffer, no result if checksum is wrong
+    function decodeUnsafe(str) {
+        var buffer = base58.decodeUnsafe(str);
+        if (buffer == null)
+            return;
+        return decodeRaw(buffer);
+    }
+    function decode(str) {
+        var buffer = base58.decode(str);
+        var payload = decodeRaw(buffer);
+        if (payload == null)
+            throw new Error('Invalid checksum');
+        return payload;
+    }
+    return {
+        encode: encode,
+        decode: decode,
+        decodeUnsafe: decodeUnsafe
+    };
+}
+
+// SHA256(SHA256(buffer))
+function sha256x2(buffer) {
+    return sha256$1(sha256$1(buffer));
+}
+var bs58check = bs58checkBase(sha256x2);
+
+function resolveAddressInput(address) {
+    if (typeof address === 'string') {
+        return String(address).trim();
+    }
+    if (address && typeof address.address === 'string') {
+        return String(address.address).trim();
+    }
+    throw new Error('Address must be a string or an object with an address field');
+}
+
+const LEGACY_MAINNET_PREFIX = 53;
+const LEGACY_TESTNET_PREFIX = 127;
+const OP_1 = 0x51;
+const WITNESS_FAMILIES = [
+    {
+        type: 'authscript',
+        witnessVersion: 1,
+        hrp: { mainnet: 'nc', testnet: 'tnc' },
+        network: { mainnet: 'xna-authscript', testnet: 'xna-authscript-test' }
+    },
+    {
+        type: 'pq',
+        witnessVersion: 2,
+        hrp: { mainnet: 'pq', testnet: 'tpq' },
+        network: { mainnet: 'xna-pq', testnet: 'xna-pq-test' }
+    },
+    {
+        type: 'ecdsa',
+        witnessVersion: 3,
+        hrp: { mainnet: 'nq', testnet: 'tnq' },
+        network: { mainnet: 'xna', testnet: 'xna-test' }
+    }
+];
+/** The family that owns `hrp` (lowercase), with the chain it encodes. */
+function witnessFamilyByHrp(hrp) {
+    for (const family of WITNESS_FAMILIES) {
+        if (family.hrp.mainnet === hrp)
+            return { family, chain: 'mainnet' };
+        if (family.hrp.testnet === hrp)
+            return { family, chain: 'testnet' };
+    }
+    return undefined;
+}
+/** The family encoded by `witnessVersion`, or undefined for any other version. */
+function witnessFamilyByVersion(witnessVersion) {
+    return WITNESS_FAMILIES.find((family) => family.witnessVersion === witnessVersion);
+}
+
+// Longest Bech32m string the node's decoder accepts (bech32.cpp).
+const BECH32M_MAX_LENGTH = 90;
+const AUTHSCRIPT_PROGRAM_LENGTH = 32;
+function tryBech32mDecode(address) {
+    try {
+        const { prefix, words } = distExports.bech32m.decode(address, BECH32M_MAX_LENGTH);
+        return { hrp: prefix.toLowerCase(), words };
+    }
+    catch {
+        return null;
+    }
+}
+function decodeWitnessAddress(address, parts) {
+    const owner = witnessFamilyByHrp(parts.hrp);
+    if (!owner) {
+        throw new Error(`Unsupported Bech32m prefix "${parts.hrp}" for ${address}`);
+    }
+    if (parts.words.length === 0) {
+        throw new Error(`Empty witness program in ${address}`);
+    }
+    const version = parts.words[0];
+    const { family, chain } = owner;
+    if (version !== family.witnessVersion) {
+        const actual = witnessFamilyByVersion(version);
+        const hint = actual
+            ? `; witness v${version} addresses use the "${actual.hrp[chain]}" prefix`
+            : '';
+        const legacyHint = family.type === 'ecdsa' && version === 1
+            ? ' Generic AuthScript v1 addresses are now encoded as nc1p… / tnc1p… ' +
+                '(same scriptPubKey): regenerate the address (neurai-key xna-authscript networks).'
+            : '';
+        throw new Error(`Address ${address}: the "${parts.hrp}" prefix only encodes witness v${family.witnessVersion}, ` +
+            `not v${version}${hint}.${legacyHint}`);
+    }
+    let program;
+    try {
+        program = Uint8Array.from(distExports.bech32m.fromWords(parts.words.slice(1)));
+    }
+    catch {
+        throw new Error(`Invalid witness program padding in ${address}`);
+    }
+    if (program.length !== AUTHSCRIPT_PROGRAM_LENGTH) {
+        throw new Error(`Unsupported AuthScript program length ${program.length} for ${address} (expected ${AUTHSCRIPT_PROGRAM_LENGTH})`);
+    }
+    return {
+        address,
+        type: family.type,
+        witnessVersion: family.witnessVersion,
+        network: family.network[chain],
+        program,
+        commitment: program
+    };
+}
+function decodeLegacyAddress(address) {
+    const payload = Uint8Array.from(bs58check.decode(address));
+    if (payload.length !== 21) {
+        throw new Error(`Unsupported legacy address payload length for ${address}`);
+    }
+    const prefix = payload[0];
+    if (prefix !== LEGACY_MAINNET_PREFIX && prefix !== LEGACY_TESTNET_PREFIX) {
+        throw new Error(`Unsupported legacy address prefix ${prefix} for ${address}`);
+    }
+    return {
+        address,
+        type: 'p2pkh',
+        network: prefix === LEGACY_MAINNET_PREFIX ? 'xna-legacy' : 'xna-legacy-test',
+        program: payload.slice(1),
+        hash: payload.slice(1)
+    };
+}
+/**
+ * Decode a Neurai address the way the node does (base58.cpp
+ * `DecodeDestination`): Bech32m first, Base58Check otherwise.
+ *
+ * - Base58 P2PKH → `type: 'p2pkh'`, network `xna-legacy` / `xna-legacy-test`
+ *   (an `xna-old-legacy` address is indistinguishable and reports
+ *   `xna-legacy`).
+ * - Bech32m → `authscript` (v1, `nc`/`tnc`), `pq` (v2, `pq`/`tpq`) or
+ *   `ecdsa` (v3, `nq`/`tnq`), with `witnessVersion` and the 32-byte
+ *   commitment. Any other HRP/version pair is rejected, including the old
+ *   `nq1p…` / `tnq1p…` encoding of generic AuthScript v1.
+ *
+ * The decoder does not know whether a witness family is active on the
+ * target chain: before activation the node refuses v2/v3 addresses and a
+ * witness output is anyone-can-spend.
+ */
+function decodeAddress(address) {
+    const normalized = resolveAddressInput(address);
+    if (!normalized)
+        throw new Error('Address is required');
+    const bech32mParts = tryBech32mDecode(normalized);
+    if (bech32mParts) {
+        return decodeWitnessAddress(normalized, bech32mParts);
+    }
+    try {
+        return decodeLegacyAddress(normalized);
+    }
+    catch (legacyError) {
+        // Not Base58 either. When the string carries a known Bech32m prefix the
+        // Bech32m failure (bad checksum, mixed case…) is the useful diagnosis.
+        const separator = normalized.lastIndexOf('1');
+        const hrp = separator > 0 ? normalized.slice(0, separator).toLowerCase() : '';
+        if (witnessFamilyByHrp(hrp)) {
+            throw new Error(`Invalid Bech32m address ${normalized} (checksum, case or character error)`);
+        }
+        throw legacyError;
+    }
+}
+/**
+ * Classify a scriptPubKey by its destination prefix, ignoring any trailing
+ * asset wrapper: `76a914<20>88ac…` is P2PKH, `5120<32>…`, `5220<32>…` and
+ * `5320<32>…` are AuthScript v1 (generic), v2 (PQ) and v3 (ECDSA).
+ */
+function classifyScriptPubKey(script) {
+    const bytes = typeof script === 'string' ? hexToBytes(script) : script;
+    if (bytes.length >= 25 &&
+        bytes[0] === 0x76 &&
+        bytes[1] === 0xa9 &&
+        bytes[2] === 0x14 &&
+        bytes[23] === 0x88 &&
+        bytes[24] === 0xac) {
+        return { type: 'p2pkh', program: bytes.slice(3, 23), hasSuffix: bytes.length > 25 };
+    }
+    if (bytes.length >= 34 && bytes[1] === 0x20) {
+        const family = witnessFamilyByVersion(bytes[0] - (OP_1 - 1));
+        if (family) {
+            return {
+                type: family.type,
+                witnessVersion: family.witnessVersion,
+                program: bytes.slice(2, 34),
+                hasSuffix: bytes.length > 34
+            };
+        }
+    }
+    return { type: 'unknown', hasSuffix: false };
+}
 
 // Hard deserialization bound, mirroring the node (serialize.h MAX_SIZE):
 // ReadCompactSize rejects anything above it, canonical or not.
@@ -15584,9 +16171,34 @@ function computeOpTxHash(tx, selector, inIndex, options) {
     return hash256$1(bufferExports.Buffer.concat(parts));
 }
 
+// Chain parameters. The signer only reads the WIF version byte (`private`);
+// every neurai-key 5 network label of a chain shares it, whatever its address
+// type. `bip44` is informative only (Legacy coin type; neurai-key 5 derives
+// the ECDSA witness v3 keys under m/84'/1900' and the historical coin type 0
+// under its xna-old-legacy network).
 const xna = {
     mainnet: {
+        name: "Neurai",
+        unit: "XNA",
+        symbol: "xna",
+        decimalPlaces: 100000000,
         messagePrefix: "Neurai Signed Message:\n",
+        confirmations: 6,
+        website: "https://neurai.org/",
+        projectUrl: "https://github.com/NeuraiProject",
+        id: "94C49B3B-2C88-4408-B566-3D277C596778",
+        network: "mainnet",
+        hashGenesisBlock: "00000044d33c0c0ba019be5c0249730424a69cb4c222153322f68c6104484806",
+        port: 19000,
+        portRpc: 19001,
+        protocol: {
+            magic: 1381320014,
+        },
+        seedsDns: [
+            "seed1.neurai.org",
+            "seed2.neurai.org",
+            "neurai-ipv4.neuraiexplorer.com",
+        ],
         versions: {
             bip32: {
                 private: 76066276,
@@ -15599,7 +16211,27 @@ const xna = {
         },
     },
     testnet: {
+        name: "Neurai",
+        unit: "XNA",
+        symbol: "xna",
+        decimalPlaces: 100000000,
         messagePrefix: "Neurai Signed Message:\n",
+        confirmations: 6,
+        website: "https://neurai.org/",
+        projectUrl: "https://github.com/NeuraiProject",
+        id: "1EB2ACBA-E8E0-4970-BB20-37DA4B70F6A6",
+        network: "testnet",
+        hashGenesisBlock: "0000006af8b8297448605b0283473ec712f9768f81cc7eae6269b875dee3b0cf",
+        port: 19100,
+        portRpc: 19101,
+        protocol: {
+            magic: 1313166674,
+        },
+        seedsDns: [
+            "testnet1.neuracrypt.org",
+            "testnet2.neuracrypt.org",
+            "testnet3.neuracrypt.org",
+        ],
         versions: {
             bip32: {
                 private: 70615956,
@@ -15609,52 +16241,6 @@ const xna = {
             private: 239,
             public: 127,
             scripthash: 196,
-        },
-    },
-};
-
-const xnaLegacy = {
-    mainnet: {
-        messagePrefix: "Neurai Signed Message:\n",
-        versions: {
-            bip32: {
-                private: 76066276,
-                public: 76067358,
-            },
-            bip44: 0,
-            private: 128,
-            public: 53,
-            scripthash: 117,
-        },
-    },
-    testnet: {
-        messagePrefix: "Neurai Signed Message:\n",
-        versions: {
-            bip32: {
-                private: 70615956,
-                public: 70617039,
-            },
-            bip44: 1,
-            private: 239,
-            public: 127,
-            scripthash: 196,
-        },
-    },
-};
-
-const xnaPQ = {
-    mainnet: {
-        hrp: "nq",
-        bip32: {
-            private: 76066276,
-            public: 76067358,
-        },
-    },
-    testnet: {
-        hrp: "tnq",
-        bip32: {
-            private: 70615956,
-            public: 70617039,
         },
     },
 };
@@ -15664,7 +16250,11 @@ const HASH_TYPE = Transaction.SIGHASH_ALL;
 const LEGACY_PREFIX_LENGTH = 25;
 const AUTHSCRIPT_PREFIX_LENGTH = 34;
 const AUTHSCRIPT_TAG = "NeuraiAuthScript";
-const AUTHSCRIPT_VERSION = 0x01;
+// Witness versions of the AuthScript families. The version is the first byte
+// of the commitment preimage and, for the strict families, part of the sighash.
+const AUTHSCRIPT_WITNESS_V1 = 0x01; // generic AuthScript (nc1p… / tnc1p…)
+const STRICT_PQ_WITNESS_V2 = 0x02; // strict PQ (pq1z… / tpq1z…)
+const STRICT_ECDSA_WITNESS_V3 = 0x03; // strict ECDSA (nq1r… / tnq1r…)
 const NOAUTH_TYPE = 0x00;
 const PQ_AUTHSCRIPT_TYPE = 0x01;
 const LEGACY_AUTHSCRIPT_TYPE = 0x02;
@@ -15693,16 +16283,17 @@ function toBitcoinJS(network) {
         wif: network.versions.private,
     };
 }
-function toBitcoinJSPQ(baseNetwork, pqNetwork) {
-    return {
-        ...toBitcoinJS(baseNetwork),
-        bech32: pqNetwork.hrp,
-        bip32: {
-            public: pqNetwork.bip32.public,
-            private: pqNetwork.bip32.private,
-        },
-    };
-}
+const NETWORK_CHAIN = {
+    xna: "mainnet",
+    "xna-legacy": "mainnet",
+    "xna-old-legacy": "mainnet",
+    "xna-pq": "mainnet",
+    "xna-authscript": "mainnet",
+    "xna-test": "testnet",
+    "xna-legacy-test": "testnet",
+    "xna-pq-test": "testnet",
+    "xna-authscript-test": "testnet",
+};
 function isHexString(value) {
     return /^[0-9a-f]+$/i.test(value) && value.length % 2 === 0;
 }
@@ -15732,10 +16323,24 @@ function isLegacyScript(script) {
         script[23] === OPS$1.OP_EQUALVERIFY &&
         script[24] === OPS$1.OP_CHECKSIG);
 }
-function isPQScript$1(script) {
-    return (script.length >= AUTHSCRIPT_PREFIX_LENGTH &&
-        script[0] === OPS$1.OP_1 &&
-        script[1] === 0x20);
+/**
+ * Witness version of an AuthScript prevout (`OP_n 0x20 <32B>`, possibly
+ * followed by an asset wrapper): 1 generic, 2 strict PQ, 3 strict ECDSA.
+ * Null for any other script.
+ */
+function getAuthScriptWitnessVersion(script) {
+    if (script.length < AUTHSCRIPT_PREFIX_LENGTH || script[1] !== 0x20)
+        return null;
+    const version = script[0] - (OPS$1.OP_1 - 1);
+    return version === AUTHSCRIPT_WITNESS_V1 ||
+        version === STRICT_PQ_WITNESS_V2 ||
+        version === STRICT_ECDSA_WITNESS_V3
+        ? version
+        : null;
+}
+/** Generic AuthScript v1 prefix (`OP_1 0x20 <32B>`). */
+function isAuthScriptV1Script(script) {
+    return getAuthScriptWitnessVersion(script) === AUTHSCRIPT_WITNESS_V1;
 }
 // NIP-025: asset payload marker + type. NIP-040 renames the marker from the
 // Ravencoin-inherited "rvn" to "xna" (active on testnet/regtest; mainnet
@@ -15752,7 +16357,9 @@ function hasAssetMarker(payload) {
 const XNA_ASSET_TYPE_MARKERS = new Set([0x74, 0x71, 0x6f, 0x72]);
 /**
  * Mirror of the node's `IsAssetAuthScript()` predicate (strict AuthScript
- * asset parser, script.cpp:340-378): AuthScript-v1 prefix (34 B), then
+ * asset parser, script.cpp:333-339): generic AuthScript-v1 prefix (34 B,
+ * `OP_1` only — the node's NIP-025 predicate does not cover the strict
+ * `OP_2` / `OP_3` families), then
  * `OP_XNA_ASSET` exactly at offset 34, then ONE pushdata element decoded
  * with Script push semantics (direct push / OP_PUSHDATA1/2/4, lengths
  * validated) whose payload starts with "rvn" or "xna" (NIP-040) + a valid
@@ -15762,7 +16369,7 @@ const XNA_ASSET_TYPE_MARKERS = new Set([0x74, 0x71, 0x6f, 0x72]);
  * count as a wrapper.
  */
 function isAssetAuthScript(scriptPubKey) {
-    if (!isPQScript$1(scriptPubKey))
+    if (!isAuthScriptV1Script(scriptPubKey))
         return false;
     let offset = AUTHSCRIPT_PREFIX_LENGTH;
     if (scriptPubKey.length <= offset || scriptPubKey[offset] !== OP_XNA_ASSET) {
@@ -15815,11 +16422,11 @@ function isAssetAuthScript(scriptPubKey) {
 // the node: true on testnet/regtest, false on mainnet
 // (chainparams.cpp:135,351,568). Regtest shares the testnet networks here.
 // Revisit this set when a mainnet fork activates the rule.
-const NETWORKS_WITH_ASSET_AUTHSCRIPT_RBF_BLOCK = new Set(["xna-test", "xna-legacy-test", "xna-pq-test"]);
+const NETWORKS_WITH_ASSET_AUTHSCRIPT_RBF_BLOCK = new Set(["xna-test", "xna-legacy-test", "xna-pq-test", "xna-authscript-test"]);
 const MIN_NON_RBF_SEQUENCE = 0xfffffffe;
 function getAuthScriptProgram(scriptPubKey) {
-    if (!isPQScript$1(scriptPubKey)) {
-        throw new Error("AuthScript scriptPubKey must start with OP_1 <32-byte commitment>");
+    if (getAuthScriptWitnessVersion(scriptPubKey) === null) {
+        throw new Error("AuthScript scriptPubKey must start with OP_1/OP_2/OP_3 <32-byte commitment>");
     }
     return scriptPubKey.subarray(2, AUTHSCRIPT_PREFIX_LENGTH);
 }
@@ -15840,8 +16447,8 @@ function getUTXOAmount(utxo) {
  *
  * The script itself is the source of truth: if the scriptPubKey has an
  * `OP_XNA_ASSET` byte right after the destination prefix (P2PKH = 25 bytes,
- * AuthScript v1 = 34 bytes), the output is asset-wrapped and its nValue
- * is 0.
+ * AuthScript `OP_1`/`OP_2`/`OP_3` = 34 bytes), the output is asset-wrapped
+ * and its nValue is 0.
  *
  * Non-standard prefixes (covenants, bare scripts, unknown witness
  * versions) fall through to `getUTXOAmount`; callers that supply a
@@ -15861,7 +16468,7 @@ function getSighashAmount(utxo) {
     }
     const assetOffset = isLegacyScript(scriptPubKey)
         ? LEGACY_PREFIX_LENGTH
-        : isPQScript$1(scriptPubKey)
+        : getAuthScriptWitnessVersion(scriptPubKey) !== null
             ? AUTHSCRIPT_PREFIX_LENGTH
             : -1;
     if (assetOffset >= 0 && scriptPubKey.length > assetOffset && scriptPubKey[assetOffset] === OP_XNA_ASSET) {
@@ -15870,7 +16477,7 @@ function getSighashAmount(utxo) {
     return getUTXOAmount(utxo);
 }
 function sha256(buffer) {
-    return bufferExports.Buffer.from(sha256$1(buffer));
+    return bufferExports.Buffer.from(sha256$3(buffer));
 }
 function hash256(buffer) {
     return bufferExports.Buffer.from(hash256$2(buffer));
@@ -16009,7 +16616,31 @@ function getAuthScriptSpendTemplate(address, privateKeyEntry) {
         functionalArgs,
     };
 }
-function getAuthScriptCommitment(authType, publicKey, witnessScript) {
+/**
+ * Spend template of a strict family (v2 PQ / v3 ECDSA). Consensus fixes it:
+ * authType bound to the witness version, witnessScript exactly OP_TRUE and
+ * no functional arguments. A key entry may repeat those values (neurai-key 5
+ * address objects carry `authType` and `witnessScript: "51"`), but any other
+ * value is an error instead of being dropped.
+ */
+function getStrictSpendTemplate(address, privateKeyEntry, witnessVersion) {
+    const authType = witnessVersion === STRICT_PQ_WITNESS_V2 ? PQ_AUTHSCRIPT_TYPE : LEGACY_AUTHSCRIPT_TYPE;
+    const family = witnessVersion === STRICT_PQ_WITNESS_V2 ? "strict PQ (witness v2)" : "strict ECDSA (witness v3)";
+    if (typeof privateKeyEntry !== "string") {
+        if (privateKeyEntry.authType !== undefined && privateKeyEntry.authType !== authType) {
+            throw new Error(`${family} input of ${address} requires authType 0x${authType.toString(16).padStart(2, "0")}, got 0x${privateKeyEntry.authType.toString(16).padStart(2, "0")}`);
+        }
+        if (privateKeyEntry.witnessScript !== undefined &&
+            privateKeyEntry.witnessScript.toLowerCase() !== DEFAULT_PQ_WITNESS_SCRIPT.toString("hex")) {
+            throw new Error(`${family} input of ${address} only admits the OP_TRUE witnessScript ("51"), got "${privateKeyEntry.witnessScript}"`);
+        }
+        if (privateKeyEntry.functionalArgs !== undefined && privateKeyEntry.functionalArgs.length > 0) {
+            throw new Error(`${family} input of ${address} does not take functionalArgs`);
+        }
+    }
+    return { authType, witnessScript: DEFAULT_PQ_WITNESS_SCRIPT, functionalArgs: [] };
+}
+function getAuthScriptCommitment(authType, publicKey, witnessScript, witnessVersion = AUTHSCRIPT_WITNESS_V1) {
     let authDescriptor;
     if (authType === NOAUTH_TYPE) {
         authDescriptor = bufferExports.Buffer.from([NOAUTH_TYPE]);
@@ -16037,7 +16668,7 @@ function getAuthScriptCommitment(authType, publicKey, witnessScript) {
     }
     const witnessScriptHash = sha256(witnessScript);
     const preimage = bufferExports.Buffer.concat([
-        bufferExports.Buffer.from([AUTHSCRIPT_VERSION]),
+        bufferExports.Buffer.from([witnessVersion]),
         authDescriptor,
         witnessScriptHash,
     ]);
@@ -16091,7 +16722,14 @@ function hashForLegacySignatureV3(tx, refInputs, inIndex, scriptPubKey, hashType
     parts.push(locktime, hashTypeBuffer);
     return hash256(bufferExports.Buffer.concat(parts));
 }
-function hashForAuthScript(tx, inIndex, witnessScript, amount, hashType, authType, refInputs = null) {
+/**
+ * AuthScript sighash (node `SignatureHash`, interpreter.cpp): BIP-143 layout
+ * with the witnessScript as scriptCode, then `authType` before nHashType.
+ * For the strict families (`strictWitnessVersion` 2 or 3,
+ * SIGVERSION_AUTHSCRIPT_STRICT) the witness version byte goes between
+ * nLockTime and authType, which separates their signatures from generic v1.
+ */
+function hashForAuthScript(tx, inIndex, witnessScript, amount, hashType, authType, refInputs = null, strictWitnessVersion = null) {
     let hashPrevouts = ZERO_32;
     let hashSequence = ZERO_32;
     let hashOutputs = ZERO_32;
@@ -16133,6 +16771,7 @@ function hashForAuthScript(tx, inIndex, witnessScript, amount, hashType, authTyp
         // ALWAYS — an empty vrefin contributes hash256(""), not a zero hash.
         ...(refInputs ? [hash256(refInputs.concat)] : []),
         locktime,
+        ...(strictWitnessVersion !== null ? [bufferExports.Buffer.from([strictWitnessVersion])] : []),
         bufferExports.Buffer.from([authType]),
         hashTypeBuffer,
     ]);
@@ -16159,18 +16798,12 @@ function createDebugLogger(debugOption) {
     };
 }
 function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
-    const networkMapper = {
-        xna: toBitcoinJS(xna.mainnet),
-        "xna-test": toBitcoinJS(xna.testnet),
-        "xna-legacy": toBitcoinJS(xnaLegacy.mainnet),
-        "xna-legacy-test": toBitcoinJS(xnaLegacy.testnet),
-        "xna-pq": toBitcoinJSPQ(xna.mainnet, xnaPQ.mainnet),
-        "xna-pq-test": toBitcoinJSPQ(xna.testnet, xnaPQ.testnet),
-    };
-    const COIN = networkMapper[network];
-    if (!COIN)
-        throw new Error("Invalid network specified");
-    COIN.bech32 = COIN.bech32 || "";
+    const chain = NETWORK_CHAIN[network];
+    if (!chain) {
+        throw new Error(`Invalid network specified: ${JSON.stringify(network)}. Expected one of ${Object.keys(NETWORK_CHAIN).join(", ")}`);
+    }
+    // Only the WIF version byte of COIN is used (ECPair.fromWIF).
+    const COIN = toBitcoinJS(xna[chain]);
     // The codec understands v1/v2/v3 (with vrefin); bitcoinjs alone would
     // misparse a v3 transaction. The bitcoinjs Transaction remains the
     // internal working representation — for v3 it is a "reduced" view that
@@ -16304,19 +16937,23 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
         }
         const scriptPubKey = bufferExports.Buffer.from(utxo.script, "hex");
         const inputIsLegacy = isLegacyScript(scriptPubKey);
-        const inputIsPQ = isPQScript$1(scriptPubKey);
+        const witnessVersion = getAuthScriptWitnessVersion(scriptPubKey);
+        const inputIsAuthScript = witnessVersion !== null;
         debug({
             step: "script-type",
             i,
             isLegacy: inputIsLegacy,
-            isPQ: inputIsPQ,
+            witnessVersion,
         });
         const hint = utxo.bareScriptHint;
-        // Covenant branches: the prevout is AuthScript-v1-wrapped
-        // (commitment-to-covenant), so `inputIsPQ` is true. The hint tells
-        // the library the covenant witness script to use and the branch to
-        // take: fill (no signature) or cancel (legacy ECDSA or PQ CSFS).
-        if (inputIsPQ &&
+        if (hint && witnessVersion !== null && witnessVersion !== AUTHSCRIPT_WITNESS_V1) {
+            throw new Error(`${hint.kind} hint for ${txid}:${vout}: covenants live in generic AuthScript v1 outputs, but the prevout is witness v${witnessVersion}`);
+        }
+        // Covenant branches: the prevout is generic AuthScript-v1-wrapped
+        // (commitment-to-covenant). The hint tells the library the covenant
+        // witness script to use and the branch to take: fill (no signature) or
+        // cancel (legacy ECDSA or PQ CSFS).
+        if (witnessVersion === AUTHSCRIPT_WITNESS_V1 &&
             (hint?.kind === "covenant-cancel-legacy" ||
                 hint?.kind === "covenant-cancel-pq" ||
                 hint?.kind === "covenant-fill")) {
@@ -16472,13 +17109,56 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
             });
             continue;
         }
-        if (!inputIsLegacy && !inputIsPQ) {
+        if (!inputIsLegacy && !inputIsAuthScript) {
             if (hint) {
                 throw new Error(`${hint.kind} hint requires an AuthScript-v1-wrapped prevout for ${txid}:${vout}, but the prevout script is neither P2PKH nor AuthScript v1`);
             }
-            throw new Error(`Unsupported prevout script for ${txid}:${vout}. Only legacy P2PKH and Neurai AuthScript witness v1 are supported`);
+            throw new Error(`Unsupported prevout script for ${txid}:${vout}. Supported: legacy P2PKH and Neurai AuthScript witness v1 (generic), v2 (strict PQ) and v3 (strict ECDSA)`);
         }
-        if (inputIsPQ) {
+        if (witnessVersion === STRICT_PQ_WITNESS_V2 || witnessVersion === STRICT_ECDSA_WITNESS_V3) {
+            if (!hasPrivateKeyForAddress(utxo.address)) {
+                debug({ step: "skip-missing-private-key", i, address: utxo.address });
+                continue;
+            }
+            const privateKeyEntry = privateKeys[utxo.address];
+            const template = getStrictSpendTemplate(utxo.address, privateKeyEntry, witnessVersion);
+            const actualCommitment = getAuthScriptProgram(scriptPubKey);
+            let publicKey;
+            let signWith;
+            if (witnessVersion === STRICT_PQ_WITNESS_V2) {
+                const pqMaterial = getPQMaterialByAddress(utxo.address);
+                publicKey = pqMaterial.serializedPublicKey;
+                signWith = (sighash) => bufferExports.Buffer.concat([
+                    bufferExports.Buffer.from(ml_dsa44.sign(new Uint8Array(sighash), new Uint8Array(pqMaterial.secretKey), {
+                        extraEntropy: false,
+                    })),
+                    bufferExports.Buffer.from([HASH_TYPE]),
+                ]);
+            }
+            else {
+                const keyPair = getKeyPairByAddress(utxo.address);
+                if (!keyPair.compressed) {
+                    throw new Error(`strict ECDSA (witness v3) input of ${utxo.address} needs a compressed key; the WIF encodes an uncompressed one`);
+                }
+                publicKey = bufferExports.Buffer.from(keyPair.publicKey);
+                signWith = (sighash) => bufferExports.Buffer.from(signature.encode(bufferExports.Buffer.from(keyPair.sign(sighash)), HASH_TYPE));
+            }
+            const expectedCommitment = getAuthScriptCommitment(template.authType, publicKey, template.witnessScript, witnessVersion);
+            if (!actualCommitment.equals(expectedCommitment)) {
+                throw new Error(`AuthScript commitment mismatch for ${txid}:${vout} (witness v${witnessVersion}). The provided key does not match the prevout script`);
+            }
+            const sighash = hashForAuthScript(tx, i, template.witnessScript, getSighashAmount(utxo), HASH_TYPE, template.authType, refInputs, witnessVersion);
+            tx.setInputScript(i, bufferExports.Buffer.alloc(0));
+            tx.setWitness(i, [
+                bufferExports.Buffer.from([template.authType]),
+                signWith(sighash),
+                publicKey,
+                template.witnessScript,
+            ]);
+            debug({ step: "strict-witness-set", i, witnessVersion, authType: template.authType });
+            continue;
+        }
+        if (inputIsAuthScript) {
             const hasPrivateKeyEntry = hasPrivateKeyForAddress(utxo.address);
             debug({
                 step: "pq-material",
@@ -16629,6 +17309,9 @@ const PQ_DEFAULT_WITNESS_SCRIPT_BYTES = 1; // OP_TRUE
 // and vary 70-72 bytes; we always assume the maximum so fee estimates round up.
 const LEGACY_SIGNATURE_BYTES = 73; // 72-byte DER signature + sighash type byte
 const LEGACY_PUBKEY_BYTES = 33; // compressed secp256k1 pubkey
+// Strict ECDSA witness v3 spend: [0x02, DER sig + hashType, pubkey33, OP_TRUE].
+const ECDSA_AUTH_TYPE_BYTES = 1;
+const ECDSA_WITNESS_SCRIPT_BYTES = 1; // OP_TRUE
 /**
  * Per-component byte sizes used across the Neurai stack for fee estimation.
  *
@@ -16646,47 +17329,99 @@ const VBYTES = {
     segwitMarkerVbytes: 1,
     /** vbytes contributed by a typical legacy P2PKH input (worst-case scriptSig). */
     legacyInputVbytes: 148,
-    /** vbytes contributed by a typical PQ AuthScript input with a default OP_TRUE witnessScript. */
+    /**
+     * vbytes contributed by a PQ input: strict PQ witness v2, or generic
+     * AuthScript v1 with a PQ key and the default OP_TRUE witnessScript.
+     */
     pqInputVbytes: 977,
+    /**
+     * vbytes contributed by a strict ECDSA witness v3 input (41 non-witness
+     * bytes + a 113-byte worst-case witness = 277 weight units, rounded up).
+     */
+    ecdsaWitnessInputVbytes: 70,
     /** Raw bytes of a legacy P2PKH output: 8-byte value + 1-byte script length + 25-byte scriptPubKey. */
     legacyOutputBytes: 34,
-    /** Raw bytes of an AuthScript-v1 output: 8-byte value + 1-byte script length + 34-byte scriptPubKey. */
+    /**
+     * Raw bytes of any AuthScript output (`OP_1`/`OP_2`/`OP_3` + 32-byte
+     * program): 8-byte value + 1-byte script length + 34-byte scriptPubKey.
+     */
+    witnessOutputBytes: 43,
+    /** @deprecated Same as `witnessOutputBytes`, which covers every witness version. */
     pqOutputBytes: 43,
 };
-/**
- * Returns true when the address belongs to a Neurai PQ (AuthScript v1) bech32
- * destination. PQ HRPs are `nq` (mainnet) and `tnq` (testnet).
- */
-function isPQAddress(address) {
-    return (typeof address === "string" &&
-        (address.startsWith("nq1") || address.startsWith("tnq1")));
+/** Destination kind of an address; `unknown` when it does not decode. */
+function getAddressKind(address) {
+    if (typeof address !== "string" || address.length === 0)
+        return "unknown";
+    try {
+        return decodeAddress(address).type;
+    }
+    catch {
+        return "unknown";
+    }
 }
 /**
- * Returns true when the hex-encoded scriptPubKey is an AuthScript-v1 output
- * (witness v1 with a 32-byte program). Asset-wrapped variants share the same
- * 34-byte prefix so they are also detected as PQ.
+ * Destination kind of a hex scriptPubKey, ignoring a trailing asset wrapper.
+ */
+function getScriptKind(scriptHex) {
+    if (typeof scriptHex !== "string" || scriptHex.length < 4 || !/^[0-9a-f]*$/i.test(scriptHex) || scriptHex.length % 2 !== 0) {
+        return "unknown";
+    }
+    return classifyScriptPubKey(scriptHex).type;
+}
+/**
+ * True for the addresses whose spend carries an ML-DSA-44 witness: strict PQ
+ * v2 (`pq1z…` / `tpq1z…`) and generic AuthScript v1 (`nc1p…` / `tnc1p…`,
+ * whose usual key is PQ).
+ *
+ * @deprecated Use `getAddressKind`. Since 3.0.0 `nq1…` / `tnq1…` addresses
+ * are ECDSA witness v3 and return false.
+ */
+function isPQAddress(address) {
+    const kind = getAddressKind(address);
+    return kind === "pq" || kind === "authscript";
+}
+/**
+ * True for `OP_1` (generic AuthScript v1) and `OP_2` (strict PQ v2)
+ * scriptPubKeys with a 32-byte program, asset-wrapped or not.
+ *
+ * @deprecated Use `getScriptKind`. `OP_3` (strict ECDSA v3) scripts return
+ * false.
  */
 function isPQScript(scriptHex) {
-    if (typeof scriptHex !== "string" || scriptHex.length < 4)
-        return false;
-    // OP_1 (0x51) + push-32 (0x20) prefix.
-    return scriptHex.toLowerCase().startsWith("5120");
+    const kind = getScriptKind(scriptHex);
+    return kind === "pq" || kind === "authscript";
+}
+function inputVbytesForKind(kind) {
+    switch (kind) {
+        case "pq":
+        case "authscript":
+            return VBYTES.pqInputVbytes;
+        case "ecdsa":
+            return VBYTES.ecdsaWitnessInputVbytes;
+        default:
+            return VBYTES.legacyInputVbytes;
+    }
+}
+function isWitnessKind(kind) {
+    return kind === "pq" || kind === "authscript" || kind === "ecdsa";
+}
+function inputKind(utxo) {
+    const script = utxo.script;
+    if (typeof script === "string" && script.length > 0) {
+        return getScriptKind(script);
+    }
+    const address = utxo.address;
+    return typeof address === "string" ? getAddressKind(address) : "unknown";
 }
 /**
  * Estimate the vbytes contributed by spending a single UTXO. Uses the UTXO's
  * `script` if available (most accurate), otherwise falls back to its `address`.
- * Unknown prevouts are treated as legacy.
+ * Unknown prevouts are treated as legacy. Generic AuthScript v1 inputs are
+ * sized as PQ spends with the default OP_TRUE witnessScript.
  */
 function estimateInputVbytes(utxo) {
-    const script = utxo.script;
-    if (typeof script === "string" && script.length > 0) {
-        return isPQScript(script) ? VBYTES.pqInputVbytes : VBYTES.legacyInputVbytes;
-    }
-    const address = utxo.address;
-    if (typeof address === "string" && isPQAddress(address)) {
-        return VBYTES.pqInputVbytes;
-    }
-    return VBYTES.legacyInputVbytes;
+    return inputVbytesForKind(inputKind(utxo));
 }
 /**
  * Estimate the raw bytes contributed by an output, given either its address or
@@ -16694,7 +17429,7 @@ function estimateInputVbytes(utxo) {
  */
 function estimateOutputBytes(target) {
     const address = typeof target === "string" ? target : (target && target.address) || "";
-    return isPQAddress(address) ? VBYTES.pqOutputBytes : VBYTES.legacyOutputBytes;
+    return isWitnessKind(getAddressKind(address)) ? VBYTES.witnessOutputBytes : VBYTES.legacyOutputBytes;
 }
 /**
  * Quick fee-estimation helper. Sums the per-input/per-output contributions for
@@ -16705,17 +17440,17 @@ function estimateOutputBytes(target) {
  */
 function estimateTransactionVbytes(inputs, outputs) {
     let vbytes = VBYTES.baseTxOverheadBytes;
-    let hasPQInput = false;
+    let hasWitnessInput = false;
     for (const inp of inputs) {
-        const v = estimateInputVbytes(inp);
-        vbytes += v;
-        if (v === VBYTES.pqInputVbytes)
-            hasPQInput = true;
+        const kind = inputKind(inp);
+        vbytes += inputVbytesForKind(kind);
+        if (isWitnessKind(kind))
+            hasWitnessInput = true;
     }
     for (const out of outputs) {
         vbytes += estimateOutputBytes(out);
     }
-    if (hasPQInput)
+    if (hasWitnessInput)
         vbytes += VBYTES.segwitMarkerVbytes;
     return vbytes;
 }
@@ -16747,13 +17482,17 @@ function estimateVirtualSize(_network, rawTransactionHex, utxos) {
             // worst-case legacy scriptSig is the safer default than nothing.
             return { scriptSig: dummyLegacyScriptSig(), witness: [] };
         }
-        if (isPQScript(utxo.script)) {
+        const kind = getScriptKind(utxo.script);
+        if (kind === "authscript" || kind === "pq") {
             return {
                 scriptSig: bufferExports.Buffer.alloc(0),
-                witness: utxo.bareScriptHint
+                witness: kind === "authscript" && utxo.bareScriptHint
                     ? dummyCovenantWitness(utxo.bareScriptHint)
                     : dummyPQWitness(),
             };
+        }
+        if (kind === "ecdsa") {
+            return { scriptSig: bufferExports.Buffer.alloc(0), witness: dummyECDSAWitness() };
         }
         return { scriptSig: dummyLegacyScriptSig(), witness: [] };
     };
@@ -16810,6 +17549,14 @@ function dummyPQWitness() {
         bufferExports.Buffer.alloc(PQ_DEFAULT_WITNESS_SCRIPT_BYTES),
     ];
 }
+function dummyECDSAWitness() {
+    return [
+        bufferExports.Buffer.alloc(ECDSA_AUTH_TYPE_BYTES),
+        bufferExports.Buffer.alloc(LEGACY_SIGNATURE_BYTES),
+        bufferExports.Buffer.alloc(LEGACY_PUBKEY_BYTES),
+        bufferExports.Buffer.alloc(ECDSA_WITNESS_SCRIPT_BYTES),
+    ];
+}
 // Worst-case CScriptNum for an int64 fill amount: 8 value bytes + 1 sign pad.
 const FILL_AMOUNT_MAX_BYTES = 9;
 /**
@@ -16848,5 +17595,5 @@ function dummyCovenantWitness(hint) {
     }
 }
 
-export { VBYTES, Signer as default, estimateInputVbytes, estimateOutputBytes, estimateTransactionVbytes, estimateVirtualSize, isPQAddress, isPQScript, sign };
+export { VBYTES, Signer as default, estimateInputVbytes, estimateOutputBytes, estimateTransactionVbytes, estimateVirtualSize, getAddressKind, getScriptKind, isPQAddress, isPQScript, sign };
 //# sourceMappingURL=index.mjs.map

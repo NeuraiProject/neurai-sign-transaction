@@ -7,8 +7,11 @@ export type {
   PrivateKeyInput,
   SupportedNetwork,
 } from "./shared";
+export type { AddressKind } from "./estimate";
 export {
   VBYTES,
+  getAddressKind,
+  getScriptKind,
   estimateInputVbytes,
   estimateOutputBytes,
   estimateTransactionVbytes,

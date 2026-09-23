@@ -304,7 +304,7 @@ test("Verify debug events expose PQ AuthScript signing path", () => {
       expect.objectContaining({
         step: "script-type",
         i: 1,
-        isPQ: true,
+        witnessVersion: 1,
       }),
       expect.objectContaining({
         step: "pq-material",
@@ -1452,28 +1452,80 @@ test("computeOpTxHash — CURRENT_* bits differ per input index", () => {
   }
 });
 
-test("isPQAddress / isPQScript classify PQ vs legacy", () => {
-  expect(Signer.isPQAddress("nq1qabcdefghij")).toBe(true);
-  expect(Signer.isPQAddress("tnq1qabcdefghij")).toBe(true);
-  expect(Signer.isPQAddress("mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA")).toBe(false);
+// Addresses made by a regtest node (getnewaddress / "" pq / "" ecdsa) with the
+// scriptPubKey validateaddress reports.
+const NODE_ADDRESSES = {
+  authscript: {
+    address: "tnc1p8802g0lnexmnvj7up5f55wz4elvj7xf7ytm0n6t95adrhl4vfgcq4r7pld",
+    script: "512039dea43ff3c9b7364bdc0d134a3855cfd92f193e22f6f9e965a75a3bfeac4a30",
+  },
+  pq: {
+    address: "tpq1z5age5p2v5q9w6qzadkjp4yep8gpr56q6mzd4fu6eus8ntulul6vq3q07pc",
+    script: "5220a7519a054ca00aed005d6da41a93213a023a681ad89b54f359e40f35f3fcfe98",
+  },
+  ecdsa: {
+    address: "tnq1rwentz4njukcn400flwk5tu6s8fmzwd3e408nmkqz6dvfysgcdp2suqptef",
+    script: "53207666b15672e5b13abde9fbad45f3503a76273639abcf3dd802d3589241186855",
+  },
+};
+const LEGACY_TEST_ADDRESS = "mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA";
+
+test("getAddressKind / getScriptKind classify every address type", () => {
+  for (const [kind, vector] of Object.entries(NODE_ADDRESSES)) {
+    expect(Signer.getAddressKind(vector.address)).toBe(kind);
+    expect(Signer.getScriptKind(vector.script)).toBe(kind);
+  }
+  expect(Signer.getAddressKind("tTagBurnXXXXXXXXXXXXXXXXXXXXYm6pxA")).toBe("p2pkh");
+  expect(Signer.getScriptKind("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac")).toBe("p2pkh");
+  // Pre-5.0 encoding of generic AuthScript v1 and junk are not addresses.
+  expect(Signer.getAddressKind("tnq1p83wfxfypfr3tqpwakdgmk5r0pwpsemq5ngdsx7gef8yc84pndfmqjer8rk")).toBe("unknown");
+  expect(Signer.getAddressKind("nq1qabcdefghij")).toBe("unknown");
+  expect(Signer.getAddressKind("")).toBe("unknown");
+  expect(Signer.getScriptKind("a914" + "00".repeat(20) + "87")).toBe("unknown");
+  expect(Signer.getScriptKind("zz")).toBe("unknown");
+});
+
+test("isPQAddress / isPQScript (deprecated) only cover PQ-keyed witness types", () => {
+  expect(Signer.isPQAddress(NODE_ADDRESSES.pq.address)).toBe(true);
+  expect(Signer.isPQAddress(NODE_ADDRESSES.authscript.address)).toBe(true);
+  // nq1r… / tnq1r… is ECDSA witness v3 since neurai-key 5.
+  expect(Signer.isPQAddress(NODE_ADDRESSES.ecdsa.address)).toBe(false);
+  expect(Signer.isPQAddress(LEGACY_TEST_ADDRESS)).toBe(false);
   expect(Signer.isPQAddress("")).toBe(false);
 
   expect(Signer.isPQScript(PQ_SIMPLE.script)).toBe(true);
   expect(Signer.isPQScript(PQ_ASSET.script)).toBe(true);
+  expect(Signer.isPQScript(NODE_ADDRESSES.pq.script)).toBe(true);
+  expect(Signer.isPQScript(NODE_ADDRESSES.ecdsa.script)).toBe(false);
   expect(Signer.isPQScript("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac")).toBe(false);
   expect(Signer.isPQScript("")).toBe(false);
 });
 
-test("estimateInputVbytes / estimateOutputBytes use PQ vs legacy weights", () => {
+test("estimateInputVbytes / estimateOutputBytes use per-type weights", () => {
   expect(Signer.estimateInputVbytes({ script: PQ_SIMPLE.script })).toBe(Signer.VBYTES.pqInputVbytes);
+  expect(Signer.estimateInputVbytes({ script: NODE_ADDRESSES.pq.script })).toBe(Signer.VBYTES.pqInputVbytes);
+  expect(Signer.estimateInputVbytes({ script: NODE_ADDRESSES.ecdsa.script })).toBe(Signer.VBYTES.ecdsaWitnessInputVbytes);
   expect(Signer.estimateInputVbytes({ script: "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac" })).toBe(Signer.VBYTES.legacyInputVbytes);
   // Falls back to address when script is missing.
-  expect(Signer.estimateInputVbytes({ address: "nq1qabc" })).toBe(Signer.VBYTES.pqInputVbytes);
-  expect(Signer.estimateInputVbytes({ address: "mgRYHdMq" })).toBe(Signer.VBYTES.legacyInputVbytes);
+  expect(Signer.estimateInputVbytes({ address: NODE_ADDRESSES.authscript.address })).toBe(Signer.VBYTES.pqInputVbytes);
+  expect(Signer.estimateInputVbytes({ address: NODE_ADDRESSES.pq.address })).toBe(Signer.VBYTES.pqInputVbytes);
+  expect(Signer.estimateInputVbytes({ address: NODE_ADDRESSES.ecdsa.address })).toBe(Signer.VBYTES.ecdsaWitnessInputVbytes);
+  expect(Signer.estimateInputVbytes({ address: LEGACY_TEST_ADDRESS })).toBe(Signer.VBYTES.legacyInputVbytes);
 
-  expect(Signer.estimateOutputBytes("nq1qabc")).toBe(Signer.VBYTES.pqOutputBytes);
-  expect(Signer.estimateOutputBytes("tnq1qabc")).toBe(Signer.VBYTES.pqOutputBytes);
-  expect(Signer.estimateOutputBytes({ address: "mgRYHdMq" })).toBe(Signer.VBYTES.legacyOutputBytes);
+  for (const vector of Object.values(NODE_ADDRESSES)) {
+    expect(Signer.estimateOutputBytes(vector.address)).toBe(Signer.VBYTES.witnessOutputBytes);
+  }
+  expect(Signer.VBYTES.pqOutputBytes).toBe(Signer.VBYTES.witnessOutputBytes);
+  expect(Signer.estimateOutputBytes({ address: LEGACY_TEST_ADDRESS })).toBe(Signer.VBYTES.legacyOutputBytes);
+});
+
+test("estimateTransactionVbytes adds the segwit marker for any witness input", () => {
+  const legacyOnly = Signer.estimateTransactionVbytes([{ address: LEGACY_TEST_ADDRESS }], [LEGACY_TEST_ADDRESS]);
+  const ecdsaOnly = Signer.estimateTransactionVbytes([{ script: NODE_ADDRESSES.ecdsa.script }], [LEGACY_TEST_ADDRESS]);
+  expect(legacyOnly).toBe(Signer.VBYTES.baseTxOverheadBytes + Signer.VBYTES.legacyInputVbytes + Signer.VBYTES.legacyOutputBytes);
+  expect(ecdsaOnly).toBe(
+    Signer.VBYTES.baseTxOverheadBytes + Signer.VBYTES.ecdsaWitnessInputVbytes + Signer.VBYTES.legacyOutputBytes + Signer.VBYTES.segwitMarkerVbytes
+  );
 });
 
 test("estimateTransactionVbytes is monotonic in the number of PQ inputs", () => {
@@ -2226,4 +2278,219 @@ test('rejects outputs beyond Neurai MAX_MONEY even though int64 can encode them'
   const tx=new bitcoin.Transaction();tx.addInput(Buffer.alloc(32,1),0);
   tx.addOutput(Buffer.from('51','hex'),2100000000000000001n);
   expect(()=>Signer.sign('xna-test',tx.toHex(),[],{},{debug:false})).toThrow(/monetary range/);
+});
+
+// ---------------------------------------------------------------------------
+// Strict AuthScript families (neurai-key 5): PQ witness v2 and ECDSA witness v3
+// ---------------------------------------------------------------------------
+
+const NeuraiKey = require("@neuraiproject/neurai-key");
+const STRICT_MNEMONIC =
+  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const STRICT_PQ = NeuraiKey.getPQAddress("xna-pq-test", STRICT_MNEMONIC, 0, 0);
+const STRICT_ECDSA = NeuraiKey.getAddressByPath(
+  "xna-test",
+  NeuraiKey.getHDKey("xna-test", STRICT_MNEMONIC),
+  "m/84'/1'/0'/0/0"
+);
+const STRICT_PQ_SCRIPT = `5220${STRICT_PQ.commitment}`;
+const STRICT_ECDSA_SCRIPT = `5320${STRICT_ECDSA.commitment}`;
+
+function doubleSha(buffer) {
+  return Buffer.from(bitcoin.crypto.hash256(buffer));
+}
+
+/**
+ * Independent re-implementation of the node's SIGVERSION_AUTHSCRIPT_STRICT
+ * sighash (interpreter.cpp SignatureHash) for SIGHASH_ALL, tx version 1/2.
+ */
+function strictSighash(tx, inIndex, amount, witnessVersion, authType) {
+  const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0, 0); return b; };
+  const u64 = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n), 0); return b; };
+  const outpoint = (input) => Buffer.concat([Buffer.from(input.hash), u32(input.index)]);
+  const hashPrevouts = doubleSha(Buffer.concat(tx.ins.map(outpoint)));
+  const hashSequence = doubleSha(Buffer.concat(tx.ins.map((input) => u32(input.sequence))));
+  const hashOutputs = doubleSha(
+    Buffer.concat(tx.outs.map((out) => Buffer.concat([u64(out.value), Buffer.from([out.script.length]), out.script])))
+  );
+  const version = Buffer.alloc(4);
+  version.writeInt32LE(tx.version, 0);
+  return doubleSha(
+    Buffer.concat([
+      version,
+      hashPrevouts,
+      hashSequence,
+      outpoint(tx.ins[inIndex]),
+      Buffer.from([0x01, 0x51]), // scriptCode = witnessScript OP_TRUE
+      u64(amount),
+      u32(tx.ins[inIndex].sequence),
+      hashOutputs,
+      u32(tx.locktime),
+      Buffer.from([witnessVersion, authType]),
+      u32(bitcoin.Transaction.SIGHASH_ALL),
+    ])
+  );
+}
+
+function strictSpendTx() {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0, 0xffffffff);
+  tx.addInput(Buffer.from("55".repeat(32), "hex").reverse(), 1, 0xffffffff);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 190000n);
+  return tx;
+}
+
+const STRICT_UTXOS = [
+  {
+    address: STRICT_PQ.address,
+    assetName: "XNA",
+    txid: "44".repeat(32),
+    outputIndex: 0,
+    script: STRICT_PQ_SCRIPT,
+    satoshis: 100000,
+    value: 100000,
+  },
+  {
+    address: STRICT_ECDSA.address,
+    assetName: "XNA",
+    txid: "55".repeat(32),
+    outputIndex: 1,
+    script: STRICT_ECDSA_SCRIPT,
+    satoshis: 100000,
+    value: 100000,
+  },
+];
+
+test("neurai-key 5 strict addresses match the scripts the signer spends", () => {
+  expect(STRICT_PQ.address.startsWith("tpq1z")).toBe(true);
+  expect(STRICT_ECDSA.address.startsWith("tnq1r")).toBe(true);
+  expect(Signer.getAddressKind(STRICT_PQ.address)).toBe("pq");
+  expect(Signer.getAddressKind(STRICT_ECDSA.address)).toBe("ecdsa");
+});
+
+test("signs strict PQ v2 and ECDSA v3 inputs with the fixed 4-item template", () => {
+  const tx = strictSpendTx();
+  const signedHex = Signer.sign("xna-pq-test", tx.toHex(), STRICT_UTXOS, {
+    // neurai-key 5 address objects are accepted as they are.
+    [STRICT_PQ.address]: STRICT_PQ,
+    [STRICT_ECDSA.address]: STRICT_ECDSA,
+  });
+  const signed = bitcoin.Transaction.fromHex(signedHex);
+
+  const [pqWitness, ecdsaWitness] = [signed.ins[0].witness, signed.ins[1].witness];
+  expect(pqWitness.map((item) => item.length)).toEqual([1, 2421, 1313, 1]);
+  expect(Buffer.from(pqWitness[0]).toString("hex")).toBe("01");
+  expect(Buffer.from(pqWitness[3]).toString("hex")).toBe("51");
+  expect(Buffer.from(pqWitness[2]).toString("hex")).toBe("05" + STRICT_PQ.publicKey);
+  expect(ecdsaWitness.length).toBe(4);
+  expect(Buffer.from(ecdsaWitness[0]).toString("hex")).toBe("02");
+  expect(Buffer.from(ecdsaWitness[2]).toString("hex")).toBe(STRICT_ECDSA.publicKey);
+  expect(Buffer.from(ecdsaWitness[3]).toString("hex")).toBe("51");
+  expect(signed.ins[0].script.length).toBe(0);
+  expect(signed.ins[1].script.length).toBe(0);
+
+  // Signatures verify against the strict sighash (witness version byte
+  // before authType) and NOT against the generic v1 sighash.
+  const pqDigest = strictSighash(signed, 0, 100000, 2, 0x01);
+  expect(
+    ml_dsa44.verify(pqWitness[1].slice(0, -1), new Uint8Array(pqDigest), Buffer.from(STRICT_PQ.publicKey, "hex"))
+  ).toBe(true);
+  const ecdsaDigest = strictSighash(signed, 1, 100000, 3, 0x02);
+  const { signature: derSig } = bitcoin.script.signature.decode(Buffer.from(ecdsaWitness[1]));
+  const ecdsaPub = Buffer.from(STRICT_ECDSA.publicKey, "hex");
+  expect(eccCancel.verify(ecdsaDigest, ecdsaPub, derSig)).toBe(true);
+  const wrongDomain = doubleSha(Buffer.concat([Buffer.alloc(0)]));
+  expect(eccCancel.verify(wrongDomain, ecdsaPub, derSig)).toBe(false);
+});
+
+test("strict inputs accept plain string keys: PQ seed on v2, WIF on v3", () => {
+  const signedHex = Signer.sign("xna-test", strictSpendTx().toHex(), STRICT_UTXOS, {
+    [STRICT_PQ.address]: STRICT_PQ.seedKey,
+    [STRICT_ECDSA.address]: STRICT_ECDSA.WIF,
+  });
+  const signed = bitcoin.Transaction.fromHex(signedHex);
+  expect(signed.ins[0].witness.length).toBe(4);
+  expect(signed.ins[1].witness.length).toBe(4);
+});
+
+test("strict inputs reject templates the node would reject", () => {
+  const sign = (keys) => Signer.sign("xna-test", strictSpendTx().toHex(), STRICT_UTXOS, keys);
+  const keys = { [STRICT_PQ.address]: STRICT_PQ, [STRICT_ECDSA.address]: STRICT_ECDSA };
+  expect(() => sign({ ...keys, [STRICT_PQ.address]: { ...STRICT_PQ, witnessScript: "527551" } })).toThrow(
+    /only admits the OP_TRUE witnessScript/
+  );
+  expect(() => sign({ ...keys, [STRICT_PQ.address]: { ...STRICT_PQ, authType: 0x00 } })).toThrow(/requires authType 0x01/);
+  expect(() => sign({ ...keys, [STRICT_ECDSA.address]: { WIF: STRICT_ECDSA.WIF, functionalArgs: ["01"] } })).toThrow(
+    /does not take functionalArgs/
+  );
+  // Another key: the commitment check catches it before signing.
+  const other = NeuraiKey.getPQAddress("xna-pq-test", STRICT_MNEMONIC, 0, 1);
+  expect(() => sign({ ...keys, [STRICT_PQ.address]: other })).toThrow(/commitment mismatch.*witness v2/);
+  // Uncompressed WIF of the same secret.
+  const uncompressedWif = ECPairCancel.fromPrivateKey(Buffer.from(STRICT_ECDSA.privateKey, "hex"), {
+    network: XNA_TESTNET,
+    compressed: false,
+  }).toWIF();
+  expect(() => sign({ ...keys, [STRICT_ECDSA.address]: uncompressedWif })).toThrow(/compressed key/);
+});
+
+test("covenant hints are refused on strict prevouts", () => {
+  const utxos = [{ ...STRICT_UTXOS[0], bareScriptHint: { kind: "covenant-cancel-pq", covenantScriptHex: "51" } }];
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("44".repeat(32), "hex").reverse(), 0, 0xffffffff);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
+  expect(() => Signer.sign("xna-test", tx.toHex(), utxos, { [STRICT_PQ.address]: STRICT_PQ })).toThrow(
+    /generic AuthScript v1 outputs, but the prevout is witness v2/
+  );
+});
+
+test("asset-wrapped strict prevouts sign with nValue 0", () => {
+  const payload = encodeAssetPayloadHex("STRICTASSET", 500000000n);
+  const script = appendAssetWrapper(STRICT_ECDSA_SCRIPT, payload);
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("66".repeat(32), "hex").reverse(), 0, 0xffffffff);
+  tx.addOutput(Buffer.from(STRICT_ECDSA_SCRIPT, "hex"), 0n);
+  const utxo = { ...STRICT_UTXOS[1], txid: "66".repeat(32), outputIndex: 0, script, satoshis: 500000000, value: 500000000 };
+  const signed = bitcoin.Transaction.fromHex(
+    Signer.sign("xna-test", tx.toHex(), [utxo], { [STRICT_ECDSA.address]: STRICT_ECDSA })
+  );
+  const { signature } = bitcoin.script.signature.decode(Buffer.from(signed.ins[0].witness[1]));
+  expect(
+    eccCancel.verify(strictSighash(signed, 0, 0, 3, 0x02), Buffer.from(STRICT_ECDSA.publicKey, "hex"), signature)
+  ).toBe(true);
+});
+
+test("estimateVirtualSize matches the signed size of strict inputs", () => {
+  const tx = strictSpendTx();
+  const estimate = Signer.estimateVirtualSize("xna-test", tx.toHex(), STRICT_UTXOS);
+  const signed = bitcoin.Transaction.fromHex(
+    Signer.sign("xna-test", tx.toHex(), STRICT_UTXOS, {
+      [STRICT_PQ.address]: STRICT_PQ,
+      [STRICT_ECDSA.address]: STRICT_ECDSA,
+    })
+  );
+  expect(estimate).toBeGreaterThanOrEqual(signed.virtualSize());
+  expect(estimate - signed.virtualSize()).toBeLessThanOrEqual(2);
+  const quick = Signer.estimateTransactionVbytes(STRICT_UTXOS, ["mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA"]);
+  expect(quick).toBeGreaterThanOrEqual(signed.virtualSize());
+});
+
+test("every neurai-key 5 network label signs with its chain's WIF", () => {
+  for (const network of ["xna-test", "xna-legacy-test", "xna-pq-test", "xna-authscript-test"]) {
+    const signed = Signer.sign(network, strictSpendTx().toHex(), STRICT_UTXOS, {
+      [STRICT_PQ.address]: STRICT_PQ,
+      [STRICT_ECDSA.address]: STRICT_ECDSA,
+    });
+    expect(bitcoin.Transaction.fromHex(signed).ins[1].witness.length).toBe(4);
+  }
+  // A testnet WIF on a mainnet label is a mismatch, not a silent re-encode.
+  for (const network of ["xna", "xna-legacy", "xna-old-legacy", "xna-pq", "xna-authscript"]) {
+    expect(() =>
+      Signer.sign(network, strictSpendTx().toHex(), [STRICT_UTXOS[1]], { [STRICT_ECDSA.address]: STRICT_ECDSA })
+    ).toThrow();
+  }
+  expect(() => Signer.sign("mainnet", strictSpendTx().toHex(), [], {})).toThrow(/Invalid network specified/);
 });

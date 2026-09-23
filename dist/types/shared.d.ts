@@ -1,4 +1,11 @@
-export type SupportedNetwork = "xna" | "xna-test" | "xna-legacy" | "xna-legacy-test" | "xna-pq" | "xna-pq-test";
+/**
+ * neurai-key 5 network labels. The signer only needs the chain (for the WIF
+ * version byte and the per-network NIP-025 rule): every mainnet label signs
+ * with the mainnet WIF, every `-test` label with the testnet/regtest WIF.
+ * The address type of each input comes from its prevout scriptPubKey, never
+ * from the label.
+ */
+export type SupportedNetwork = "xna" | "xna-test" | "xna-legacy" | "xna-legacy-test" | "xna-old-legacy" | "xna-pq" | "xna-pq-test" | "xna-authscript" | "xna-authscript-test";
 export type PrivateKeyInput = string | IPQPrivateKeyInput;
 export interface IPQPrivateKeyInput {
     WIF?: string;
@@ -19,7 +26,7 @@ export interface ISignOptions {
 }
 /**
  * Hint that unlocks spending of a partial-fill covenant branch. Covenant
- * UTXOs on-chain are always AuthScript-v1 witness wrapped (consensus
+ * UTXOs on-chain are always generic AuthScript-v1 witness wrapped (consensus
  * `IsAssetScript` only accepts 25-byte P2PKH or 34-byte AuthScript-v1
  * prefixes before an OP_XNA_ASSET wrapper), so the covenant itself lives
  * in the spend WITNESS, not in the scriptPubKey. Callers must supply the

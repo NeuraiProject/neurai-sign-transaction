@@ -1,3 +1,8 @@
+// Chain parameters. The signer only reads the WIF version byte (`private`);
+// every neurai-key 5 network label of a chain shares it, whatever its address
+// type. `bip44` is informative only (Legacy coin type; neurai-key 5 derives
+// the ECDSA witness v3 keys under m/84'/1900' and the historical coin type 0
+// under its xna-old-legacy network).
 export const xna = {
   mainnet: {
     name: "Neurai",

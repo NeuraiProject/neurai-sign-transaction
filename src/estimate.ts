@@ -2,10 +2,20 @@ import { assertMoneyRange } from '@neuraiproject/neurai-create-transaction/amoun
 import * as bitcoin from "bitcoinjs-lib";
 import { Buffer } from "buffer";
 import {
+  classifyScriptPubKey,
+  decodeAddress,
   estimateTransactionSize,
   parseTransaction,
 } from "@neuraiproject/neurai-create-transaction";
 import type { BareScriptSigningHint, IUTXO, SupportedNetwork } from "./shared";
+
+/**
+ * Destination kind of an address or scriptPubKey, as neurai-create-transaction
+ * decodes it: `p2pkh` (Base58), `authscript` (generic witness v1, `nc1p…`),
+ * `pq` (strict witness v2, `pq1z…`), `ecdsa` (strict witness v3, `nq1r…`), or
+ * `unknown` for anything else (invalid address, bare script, P2SH…).
+ */
+export type AddressKind = "p2pkh" | "authscript" | "pq" | "ecdsa" | "unknown";
 
 // Worst-case witness item sizes for a PQ AuthScript spend with the default
 // OP_TRUE witnessScript and no functional args. These match the witness stack
@@ -19,6 +29,10 @@ const PQ_DEFAULT_WITNESS_SCRIPT_BYTES = 1; // OP_TRUE
 // and vary 70-72 bytes; we always assume the maximum so fee estimates round up.
 const LEGACY_SIGNATURE_BYTES = 73; // 72-byte DER signature + sighash type byte
 const LEGACY_PUBKEY_BYTES = 33; // compressed secp256k1 pubkey
+
+// Strict ECDSA witness v3 spend: [0x02, DER sig + hashType, pubkey33, OP_TRUE].
+const ECDSA_AUTH_TYPE_BYTES = 1;
+const ECDSA_WITNESS_SCRIPT_BYTES = 1; // OP_TRUE
 
 /**
  * Per-component byte sizes used across the Neurai stack for fee estimation.
@@ -37,53 +51,109 @@ export const VBYTES = {
   segwitMarkerVbytes: 1,
   /** vbytes contributed by a typical legacy P2PKH input (worst-case scriptSig). */
   legacyInputVbytes: 148,
-  /** vbytes contributed by a typical PQ AuthScript input with a default OP_TRUE witnessScript. */
+  /**
+   * vbytes contributed by a PQ input: strict PQ witness v2, or generic
+   * AuthScript v1 with a PQ key and the default OP_TRUE witnessScript.
+   */
   pqInputVbytes: 977,
+  /**
+   * vbytes contributed by a strict ECDSA witness v3 input (41 non-witness
+   * bytes + a 113-byte worst-case witness = 277 weight units, rounded up).
+   */
+  ecdsaWitnessInputVbytes: 70,
   /** Raw bytes of a legacy P2PKH output: 8-byte value + 1-byte script length + 25-byte scriptPubKey. */
   legacyOutputBytes: 34,
-  /** Raw bytes of an AuthScript-v1 output: 8-byte value + 1-byte script length + 34-byte scriptPubKey. */
+  /**
+   * Raw bytes of any AuthScript output (`OP_1`/`OP_2`/`OP_3` + 32-byte
+   * program): 8-byte value + 1-byte script length + 34-byte scriptPubKey.
+   */
+  witnessOutputBytes: 43,
+  /** @deprecated Same as `witnessOutputBytes`, which covers every witness version. */
   pqOutputBytes: 43,
 } as const;
 
-/**
- * Returns true when the address belongs to a Neurai PQ (AuthScript v1) bech32
- * destination. PQ HRPs are `nq` (mainnet) and `tnq` (testnet).
- */
-export function isPQAddress(address: string): boolean {
-  return (
-    typeof address === "string" &&
-    (address.startsWith("nq1") || address.startsWith("tnq1"))
-  );
+/** Destination kind of an address; `unknown` when it does not decode. */
+export function getAddressKind(address: string): AddressKind {
+  if (typeof address !== "string" || address.length === 0) return "unknown";
+  try {
+    return decodeAddress(address).type;
+  } catch {
+    return "unknown";
+  }
 }
 
 /**
- * Returns true when the hex-encoded scriptPubKey is an AuthScript-v1 output
- * (witness v1 with a 32-byte program). Asset-wrapped variants share the same
- * 34-byte prefix so they are also detected as PQ.
+ * Destination kind of a hex scriptPubKey, ignoring a trailing asset wrapper.
+ */
+export function getScriptKind(scriptHex: string): AddressKind {
+  if (typeof scriptHex !== "string" || scriptHex.length < 4 || !/^[0-9a-f]*$/i.test(scriptHex) || scriptHex.length % 2 !== 0) {
+    return "unknown";
+  }
+  return classifyScriptPubKey(scriptHex).type;
+}
+
+/**
+ * True for the addresses whose spend carries an ML-DSA-44 witness: strict PQ
+ * v2 (`pq1z…` / `tpq1z…`) and generic AuthScript v1 (`nc1p…` / `tnc1p…`,
+ * whose usual key is PQ).
+ *
+ * @deprecated Use `getAddressKind`. Since 3.0.0 `nq1…` / `tnq1…` addresses
+ * are ECDSA witness v3 and return false.
+ */
+export function isPQAddress(address: string): boolean {
+  const kind = getAddressKind(address);
+  return kind === "pq" || kind === "authscript";
+}
+
+/**
+ * True for `OP_1` (generic AuthScript v1) and `OP_2` (strict PQ v2)
+ * scriptPubKeys with a 32-byte program, asset-wrapped or not.
+ *
+ * @deprecated Use `getScriptKind`. `OP_3` (strict ECDSA v3) scripts return
+ * false.
  */
 export function isPQScript(scriptHex: string): boolean {
-  if (typeof scriptHex !== "string" || scriptHex.length < 4) return false;
-  // OP_1 (0x51) + push-32 (0x20) prefix.
-  return scriptHex.toLowerCase().startsWith("5120");
+  const kind = getScriptKind(scriptHex);
+  return kind === "pq" || kind === "authscript";
+}
+
+function inputVbytesForKind(kind: AddressKind): number {
+  switch (kind) {
+    case "pq":
+    case "authscript":
+      return VBYTES.pqInputVbytes;
+    case "ecdsa":
+      return VBYTES.ecdsaWitnessInputVbytes;
+    default:
+      return VBYTES.legacyInputVbytes;
+  }
+}
+
+function isWitnessKind(kind: AddressKind): boolean {
+  return kind === "pq" || kind === "authscript" || kind === "ecdsa";
+}
+
+function inputKind(
+  utxo: Pick<IUTXO, "script" | "address"> | { script?: string; address?: string },
+): AddressKind {
+  const script = (utxo as { script?: string }).script;
+  if (typeof script === "string" && script.length > 0) {
+    return getScriptKind(script);
+  }
+  const address = (utxo as { address?: string }).address;
+  return typeof address === "string" ? getAddressKind(address) : "unknown";
 }
 
 /**
  * Estimate the vbytes contributed by spending a single UTXO. Uses the UTXO's
  * `script` if available (most accurate), otherwise falls back to its `address`.
- * Unknown prevouts are treated as legacy.
+ * Unknown prevouts are treated as legacy. Generic AuthScript v1 inputs are
+ * sized as PQ spends with the default OP_TRUE witnessScript.
  */
 export function estimateInputVbytes(
   utxo: Pick<IUTXO, "script" | "address"> | { script?: string; address?: string },
 ): number {
-  const script = (utxo as { script?: string }).script;
-  if (typeof script === "string" && script.length > 0) {
-    return isPQScript(script) ? VBYTES.pqInputVbytes : VBYTES.legacyInputVbytes;
-  }
-  const address = (utxo as { address?: string }).address;
-  if (typeof address === "string" && isPQAddress(address)) {
-    return VBYTES.pqInputVbytes;
-  }
-  return VBYTES.legacyInputVbytes;
+  return inputVbytesForKind(inputKind(utxo));
 }
 
 /**
@@ -95,7 +165,7 @@ export function estimateOutputBytes(
 ): number {
   const address =
     typeof target === "string" ? target : (target && target.address) || "";
-  return isPQAddress(address) ? VBYTES.pqOutputBytes : VBYTES.legacyOutputBytes;
+  return isWitnessKind(getAddressKind(address)) ? VBYTES.witnessOutputBytes : VBYTES.legacyOutputBytes;
 }
 
 /**
@@ -110,19 +180,19 @@ export function estimateTransactionVbytes(
   outputs: ReadonlyArray<string | { address?: string }>,
 ): number {
   let vbytes = VBYTES.baseTxOverheadBytes;
-  let hasPQInput = false;
+  let hasWitnessInput = false;
 
   for (const inp of inputs) {
-    const v = estimateInputVbytes(inp);
-    vbytes += v;
-    if (v === VBYTES.pqInputVbytes) hasPQInput = true;
+    const kind = inputKind(inp);
+    vbytes += inputVbytesForKind(kind);
+    if (isWitnessKind(kind)) hasWitnessInput = true;
   }
 
   for (const out of outputs) {
     vbytes += estimateOutputBytes(out);
   }
 
-  if (hasPQInput) vbytes += VBYTES.segwitMarkerVbytes;
+  if (hasWitnessInput) vbytes += VBYTES.segwitMarkerVbytes;
 
   return vbytes;
 }
@@ -162,13 +232,17 @@ export function estimateVirtualSize(
       // worst-case legacy scriptSig is the safer default than nothing.
       return { scriptSig: dummyLegacyScriptSig(), witness: [] };
     }
-    if (isPQScript(utxo.script)) {
+    const kind = getScriptKind(utxo.script);
+    if (kind === "authscript" || kind === "pq") {
       return {
         scriptSig: Buffer.alloc(0),
-        witness: utxo.bareScriptHint
+        witness: kind === "authscript" && utxo.bareScriptHint
           ? dummyCovenantWitness(utxo.bareScriptHint)
           : dummyPQWitness(),
       };
+    }
+    if (kind === "ecdsa") {
+      return { scriptSig: Buffer.alloc(0), witness: dummyECDSAWitness() };
     }
     return { scriptSig: dummyLegacyScriptSig(), witness: [] };
   };
@@ -235,6 +309,15 @@ function dummyPQWitness(): Buffer[] {
     Buffer.alloc(PQ_SIGNATURE_BYTES),
     Buffer.alloc(PQ_SERIALIZED_PUBKEY_BYTES),
     Buffer.alloc(PQ_DEFAULT_WITNESS_SCRIPT_BYTES),
+  ];
+}
+
+function dummyECDSAWitness(): Buffer[] {
+  return [
+    Buffer.alloc(ECDSA_AUTH_TYPE_BYTES),
+    Buffer.alloc(LEGACY_SIGNATURE_BYTES),
+    Buffer.alloc(LEGACY_PUBKEY_BYTES),
+    Buffer.alloc(ECDSA_WITNESS_SCRIPT_BYTES),
   ];
 }
 
