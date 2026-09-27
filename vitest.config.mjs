@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["test.js", "test-regtest.js"],
+    include: ["test.js", "test-regtest.js", "test-txhash.test.ts"],
     environment: "node",
     globals: true,
   },

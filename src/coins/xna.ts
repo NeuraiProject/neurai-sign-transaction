@@ -48,16 +48,18 @@ export const xna = {
     projectUrl: "https://github.com/NeuraiProject",
     id: "1EB2ACBA-E8E0-4970-BB20-37DA4B70F6A6",
     network: "testnet",
-    hashGenesisBlock: "0000006af8b8297448605b0283473ec712f9768f81cc7eae6269b875dee3b0cf",
+    hashGenesisBlock: "0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021",
     port: 19100,
     portRpc: 19101,
     protocol: {
       magic: 1313166674,
     },
     seedsDns: [
-      "testnet1.neuracrypt.org",
-      "testnet2.neuracrypt.org",
-      "testnet3.neuracrypt.org",
+      "testnet1.neurai.org",
+      "testnet2.neurai.org",
+      "testnet3.neurai.org",
+      "seed-testnet.neurai.org",
+      "testnet.neurai.top",
     ],
     versions: {
       bip32: {

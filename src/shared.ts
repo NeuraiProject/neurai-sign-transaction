@@ -1228,7 +1228,9 @@ export function sign(
       // Consensus: OP_TXHASH pushes the 32-byte digest, CSFS then
       // re-hashes the message stack item (SIGVERSION_AUTHSCRIPT-ish),
       // so we sign SHA256(opTxHash). See plan v3 §3.
-      const opTxHash = computeOpTxHash(tx, parsedPQ.txHashSelector, i);
+      const opTxHash = computeOpTxHash(tx, parsedPQ.txHashSelector, i, {
+        refInputs: refInputs?.concat,
+      });
       const message = sha256(opTxHash);
       const rawSig = ml_dsa44.sign(
         new Uint8Array(message),

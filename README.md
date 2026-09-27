@@ -4,6 +4,15 @@ Signs a Neurai transaction.
 
 The purpose of this project is to enable signing XNA, asset and AuthScript inputs in pure JavaScript for every Neurai address type: classic P2PKH, generic AuthScript witness v1 with its three auth types (NoAuth, PQ and Legacy), strict PQ witness v2 and strict ECDSA witness v3.
 
+## 3.0.3: NIP-042 covenant cancellation
+
+The reset testnet uses a two-byte little-endian `OP_TXHASH` selector and the
+`NeuraiTxHash` tagged digest. PQ covenant cancellation signs the updated digest;
+bit 8 commits reference-input outpoints in version-3 transactions. A node
+vector for mask `0x110` checks the digest independently. This release requires
+`@neuraiproject/neurai-scripts` `^0.9.2`, which emits and parses the new selector
+format.
+
 ## 3.0.2: TypeScript 5.9
 
 Development only: TypeScript `^5.9.3` (was `5.8.3`) and the package check
@@ -52,7 +61,7 @@ The input type always comes from the prevout `script`. Breaking changes versus 2
 - `network` accepts every neurai-key 5 label (`xna-old-legacy`, `xna-authscript[-test]` are new). Only the chain matters: mainnet labels use the mainnet WIF and `-test` labels the testnet/regtest WIF. An unknown label throws with the list of valid ones.
 - Requires `@neuraiproject/neurai-create-transaction` `^0.9.0` and `@neuraiproject/neurai-scripts` `^0.9.0`.
 
-The strict families are only active on regtest today; generic AuthScript v1 on testnet and regtest. `test-regtest.js` (`npm run test:regtest`, needs a regtest node, see the file header) spends every type with keys from neurai-key 5 and checks that the node accepts them.
+All three AuthScript families activate on the reset testnet at block 10 and on regtest at block 1. `test-regtest.js` (`npm run test:regtest`, needs a regtest node, see the file header) spends every type with keys from neurai-key 5 and checks that the node accepts them.
 
 ## Package outputs
 

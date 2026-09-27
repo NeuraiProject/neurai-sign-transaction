@@ -15,6 +15,7 @@ const fs = require("fs");
 const bitcoin = require("bitcoinjs-lib");
 const NeuraiKey = require("@neuraiproject/neurai-key");
 const CT = require("@neuraiproject/neurai-create-transaction");
+const Scripts = require("@neuraiproject/neurai-scripts");
 const Signer = require("./dist/index.cjs");
 
 const CONTAINER = process.env.NEURAI_REGTEST_CONTAINER || "";
@@ -212,6 +213,43 @@ describe.skipIf(MODE === "skip")("every address type, signed by this library, ac
     expect(backResult.allowed, `reject: ${backResult.reason}`).toBe(true);
     sendAndMine(backResult.hex);
     expect(cliJson("listassetbalancesbyaddress", WALLETS.authscriptPQ.address).STRICTSIGN).toBe(400);
+  }, 90_000);
+
+  it("cancels a PQ covenant with the node's NIP-042 OP_TXHASH", () => {
+    const pqKey = WALLETS.authscriptPQ;
+    const serializedPubKey = Buffer.concat([
+      Buffer.from([0x05]),
+      Buffer.from(pqKey.publicKey, "hex"),
+    ]);
+    const pubKeyCommitment = bitcoin.crypto.sha256(serializedPubKey);
+    const covenantHex = Scripts.buildPartialFillScriptPQHex({
+      paymentAddress: WALLETS.legacy.address,
+      pubKeyCommitment: new Uint8Array(pubKeyCommitment),
+      tokenId: "CANCELTEST",
+      unitPriceSats: 100000000n,
+    });
+    expect(covenantHex).toContain("8802ff01b5");
+    const covenant = NeuraiKey.getNoAuthAddress("xna-authscript-test", {
+      witnessScript: Buffer.from(covenantHex, "hex"),
+    });
+    cli("sendtoaddress", covenant.address, 2);
+    cli("generate", 1);
+    const [funded] = utxosOf(covenant.address);
+    expect(funded).toBeDefined();
+    const rawTx = CT.createPaymentTransaction({
+      inputs: [{ txid: funded.txid, vout: funded.outputIndex }],
+      payments: [{
+        address: WALLETS.legacy.address,
+        valueSats: BigInt(funded.satoshis) - 2000000n,
+      }],
+    }).rawTx;
+    const signedHex = Signer.sign("xna-test", rawTx, [{
+      ...funded,
+      bareScriptHint: { kind: "covenant-cancel-pq", covenantScriptHex: covenantHex },
+    }], { [covenant.address]: { seedKey: pqKey.seedKey } });
+    const [result] = cliJson("testmempoolaccept", JSON.stringify([signedHex]), "true");
+    expect(Boolean(result.allowed), `PQ cancel reject: ${result["reject-reason"]}`).toBe(true);
+    sendAndMine(signedHex);
   }, 90_000);
 
   it("rejects a strict ECDSA spend signed with the generic v1 sighash", () => {

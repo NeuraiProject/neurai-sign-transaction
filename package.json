@@ -1,7 +1,7 @@
 {
   "name": "@neuraiproject/neurai-sign-transaction",
   "description": "Signs a Neurai transaction",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "source": "src/index.ts",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -38,7 +38,7 @@
     "build:types": "tsc -p tsconfig.types.json && rollup -c rollup.dts.config.mjs",
     "build": "npm run clean && npm run build:js && npm run build:types",
     "prepack": "npm run build",
-    "test": "npm run build && vitest run test.js && npm run test:types",
+    "test": "npm run build && vitest run test.js test-txhash.test.ts && npm run test:types",
     "test:types": "tsc -p tsconfig.types-nodenext.json && tsc -p tsconfig.types-node16.json && tsc -p tsconfig.types-bundler.json",
     "test:package": "npm run build && node scripts/check-package.mjs",
     "test:regtest": "npm run build && vitest run test-regtest.js"
@@ -58,15 +58,15 @@
   "homepage": "https://github.com/neuraiproject/neurai-sign-transaction#readme",
   "dependencies": {
     "@bitcoinerlab/secp256k1": "1.2.0",
-    "@neuraiproject/neurai-create-transaction": "^0.9.1",
-    "@neuraiproject/neurai-scripts": "^0.9.1",
+    "@neuraiproject/neurai-create-transaction": "^0.9.2",
+    "@neuraiproject/neurai-scripts": "^0.9.2",
     "@noble/post-quantum": "^0.6.0",
     "bitcoinjs-lib": "7.0.1",
     "buffer": "^6.0.3",
     "ecpair": "3.0.1"
   },
   "devDependencies": {
-    "@neuraiproject/neurai-key": "^5.0.2",
+    "@neuraiproject/neurai-key": "^5.0.3",
     "@rollup/plugin-commonjs": "^29.0.2",
     "@rollup/plugin-inject": "^5.0.5",
     "@rollup/plugin-node-resolve": "^16.0.3",

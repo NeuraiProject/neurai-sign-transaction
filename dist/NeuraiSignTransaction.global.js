@@ -14379,16 +14379,9 @@
         return decodeScriptNum(data, label);
     }
     /**
-     * Read a 1-byte selector as an UNSIGNED 8-bit integer (0..255). Accepts
-     * two on-wire encodings, because old vs new covenant builders differ:
-     *   - `OP_1..OP_16` shorthand (single opcode) → values 1..16.
-     *   - `0x01 <byte>` raw 1-byte push → any value 1..255.
-     *
-     * Values 0x80..0xff MUST use the raw-push form; the CScriptNum encoding
-     * would need a 0x00 padding byte and become 2 bytes on-stack, which
-     * consensus `OP_TXHASH` rejects. The builder in `script-pq.ts` emits the
-     * raw-push form unconditionally; the parser stays lenient so covenants
-     * built by older tools (using OP_N for small values) still round-trip.
+     * Read a one-byte unsigned selector. This accepts OP_1..OP_16 shorthand
+     * and a raw one-byte push for scripts that permit either form. NIP-042
+     * TXHASH masks use a separate strict two-byte parser.
      */
     function readPushUint8(c, label) {
         if (c.pos >= c.bytes.length) {
@@ -14691,9 +14684,13 @@
             throw new Error(`parse-pq: pubKeyCommitment must be 32 bytes, got ${pubKeyCommitment.length}`);
         }
         expectByte(c, OP_EQUALVERIFY, 'OP_EQUALVERIFY (cancel)');
-        const txHashSelector = readPushUint8(c, 'txHashSelector');
-        if (txHashSelector < 1) {
-            throw new Error(`parse-pq: txHashSelector 0x00 is rejected by OP_TXHASH`);
+        const selectorBytes = readPush(c, 'txHashSelector');
+        if (selectorBytes.length !== 2) {
+            throw new Error(`parse-pq: txHashSelector must be a two-byte LE push, got ${selectorBytes.length} bytes`);
+        }
+        const txHashSelector = selectorBytes[0] | (selectorBytes[1] << 8);
+        if (txHashSelector === 0 || txHashSelector > 0x1ff) {
+            throw new Error(`parse-pq: txHashSelector 0x${txHashSelector.toString(16)} is rejected by OP_TXHASH`);
         }
         expectByte(c, OP_TXHASH, 'OP_TXHASH');
         expectByte(c, OP_SWAP, 'OP_SWAP');
@@ -15430,25 +15427,11 @@
     }
 
     /**
-     * JavaScript mirror of Neurai's `OP_TXHASH(selector)` consensus opcode.
-     *
-     * The algorithm follows the BIP143-style convention used by Bitcoin Core:
-     * the "aggregate" selector bits (`INPUT_PREVOUTS`, `INPUT_SEQUENCES`,
-     * `OUTPUTS`) are materialised as SHA-256d sub-hashes of the concatenated
-     * per-input / per-output fields; the "scalar" bits contribute their raw
-     * little-endian serialisation. The outer `buffer` is then SHA-256d'd to
-     * produce the 32-byte value that the consensus interpreter pushes onto the
-     * stack when `OP_TXHASH` runs.
-     *
-     * Authoritative reference: `blockchain/Neurai/src/script/interpreter.cpp`
-     * (`case OP_TXHASH`). The plan that drives this file — with byte-exact
-     * layout table per bit — is
-     * `lib/plan-frente-b-covenant-cancel-v2.md §3.6`.
-     *
-     * Invariant: the bits are consumed in **ascending numeric order** (0x01,
-     * 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80). Changing the order here —
-     * even for bits that would otherwise commute — produces a different final
-     * digest and therefore an invalid signature.
+     * NIP-042 mirror of Neurai's OP_TXHASH. The script pushes a two-byte LE mask;
+     * the digest is SHA256(tag || tag || maskLE16 || selected fields), with
+     * tag = SHA256("NeuraiTxHash"). Aggregate fields are double-SHA256 hashes.
+     * Fields are serialized in ascending mask-bit order, including vrefin at bit 8.
+     * Authority: Neurai-DePIN/src/script/interpreter.cpp, GetTxFieldHash().
      */
     const TXHASH_VERSION = 0x01;
     const TXHASH_LOCKTIME = 0x02;
@@ -15458,6 +15441,7 @@
     const TXHASH_CURRENT_PREVOUT = 0x20;
     const TXHASH_CURRENT_SEQUENCE = 0x40;
     const TXHASH_CURRENT_INDEX = 0x80;
+    const TXHASH_REFINPUTS = 0x100;
     function hash256$1(buf) {
         return bufferExports.Buffer.from(hash256$2(buf));
     }
@@ -15550,6 +15534,9 @@
                 }
                 return sequenceBytes(tx.ins[inIndex]);
             case TXHASH_CURRENT_INDEX:
+                if (inIndex < 0 || inIndex >= tx.ins.length) {
+                    throw new Error(`computeOpTxHash: inIndex ${inIndex} out of range`);
+                }
                 return uint32LE(inIndex);
             default:
                 throw new Error(`computeOpTxHash: unexpected bit 0x${bit.toString(16)}`);
@@ -15559,28 +15546,32 @@
      * Compute the 32-byte value consensus would push via `OP_TXHASH(selector)`
      * when the current input being validated is at `inIndex`.
      *
-     * `selector` is an 8-bit mask. Bits are processed in ascending numeric
-     * order; each set bit contributes its payload (raw scalar or BIP143-style
-     * SHA-256d sub-hash) to the outer preimage, which is then SHA-256d'd.
+     * `selector` is a nonzero nine-bit mask. Consensus requires its two-byte LE
+     * encoding on the script stack. `options.refInputs` supplies the serialized
+     * vrefin outpoints for bit 8; non-v3 transactions contribute hash256(empty).
      */
     function computeOpTxHash(tx, selector, inIndex, options) {
-        if (!Number.isInteger(selector) || selector < 0 || selector > 0xff) {
-            throw new Error(`computeOpTxHash: selector 0x${selector.toString(16)} out of 8-bit range`);
+        if (!Number.isInteger(selector) || selector < 1 || selector > 0x1ff) {
+            throw new Error(`computeOpTxHash: selector 0x${selector.toString(16)} out of NIP-042 range`);
         }
-        const parts = [];
-        for (let bitIdx = 0; bitIdx < 8; bitIdx += 1) {
+        const mask = bufferExports.Buffer.alloc(2);
+        mask.writeUInt16LE(selector, 0);
+        const parts = [mask];
+        for (let bitIdx = 0; bitIdx < 9; bitIdx += 1) {
             const bit = 1 << bitIdx;
             if ((selector & bit) === 0)
                 continue;
-            const contribution = contributionFor(tx, bit, inIndex);
+            if (bit === TXHASH_REFINPUTS && tx.version === 3 && options?.refInputs === undefined) {
+                throw new Error("computeOpTxHash: v3 reference outpoints are required for bit 8");
+            }
+            const contribution = bit === TXHASH_REFINPUTS
+                ? hash256$1(tx.version === 3 ? options.refInputs : bufferExports.Buffer.alloc(0))
+                : contributionFor(tx, bit, inIndex);
             parts.push(contribution);
+            options?.diagnostics?.push({ bit, contribution });
         }
-        // Consumer note: with selector 0 this returns SHA-256d of the empty
-        // buffer. Consensus never evaluates that case (OP_TXHASH requires a
-        // non-zero selector on stack per the interpreter), so treating it as a
-        // pure function of selector=0 is a deliberate choice to keep the helper
-        // total and testable.
-        return hash256$1(bufferExports.Buffer.concat(parts));
+        const tag = bufferExports.Buffer.from(sha256$1(bufferExports.Buffer.from("NeuraiTxHash", "utf8")));
+        return bufferExports.Buffer.from(sha256$1(bufferExports.Buffer.concat([tag, tag, ...parts])));
     }
 
     // Chain parameters. The signer only reads the WIF version byte (`private`);
@@ -15633,16 +15624,18 @@
             projectUrl: "https://github.com/NeuraiProject",
             id: "1EB2ACBA-E8E0-4970-BB20-37DA4B70F6A6",
             network: "testnet",
-            hashGenesisBlock: "0000006af8b8297448605b0283473ec712f9768f81cc7eae6269b875dee3b0cf",
+            hashGenesisBlock: "0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021",
             port: 19100,
             portRpc: 19101,
             protocol: {
                 magic: 1313166674,
             },
             seedsDns: [
-                "testnet1.neuracrypt.org",
-                "testnet2.neuracrypt.org",
-                "testnet3.neuracrypt.org",
+                "testnet1.neurai.org",
+                "testnet2.neurai.org",
+                "testnet3.neurai.org",
+                "seed-testnet.neurai.org",
+                "testnet.neurai.top",
             ],
             versions: {
                 bip32: {
@@ -16498,7 +16491,9 @@
                 // Consensus: OP_TXHASH pushes the 32-byte digest, CSFS then
                 // re-hashes the message stack item (SIGVERSION_AUTHSCRIPT-ish),
                 // so we sign SHA256(opTxHash). See plan v3 §3.
-                const opTxHash = computeOpTxHash(tx, parsedPQ.txHashSelector, i);
+                const opTxHash = computeOpTxHash(tx, parsedPQ.txHashSelector, i, {
+                    refInputs: refInputs?.concat,
+                });
                 const message = sha256(opTxHash);
                 const rawSig = ml_dsa44.sign(new Uint8Array(message), new Uint8Array(pqMaterial.secretKey), { extraEntropy: false });
                 const sigWithHashType = bufferExports.Buffer.concat([

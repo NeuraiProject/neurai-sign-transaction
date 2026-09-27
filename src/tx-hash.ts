@@ -1,23 +1,9 @@
 /**
- * JavaScript mirror of Neurai's `OP_TXHASH(selector)` consensus opcode.
- *
- * The algorithm follows the BIP143-style convention used by Bitcoin Core:
- * the "aggregate" selector bits (`INPUT_PREVOUTS`, `INPUT_SEQUENCES`,
- * `OUTPUTS`) are materialised as SHA-256d sub-hashes of the concatenated
- * per-input / per-output fields; the "scalar" bits contribute their raw
- * little-endian serialisation. The outer `buffer` is then SHA-256d'd to
- * produce the 32-byte value that the consensus interpreter pushes onto the
- * stack when `OP_TXHASH` runs.
- *
- * Authoritative reference: `blockchain/Neurai/src/script/interpreter.cpp`
- * (`case OP_TXHASH`). The plan that drives this file — with byte-exact
- * layout table per bit — is
- * `lib/plan-frente-b-covenant-cancel-v2.md §3.6`.
- *
- * Invariant: the bits are consumed in **ascending numeric order** (0x01,
- * 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80). Changing the order here —
- * even for bits that would otherwise commute — produces a different final
- * digest and therefore an invalid signature.
+ * NIP-042 mirror of Neurai's OP_TXHASH. The script pushes a two-byte LE mask;
+ * the digest is SHA256(tag || tag || maskLE16 || selected fields), with
+ * tag = SHA256("NeuraiTxHash"). Aggregate fields are double-SHA256 hashes.
+ * Fields are serialized in ascending mask-bit order, including vrefin at bit 8.
+ * Authority: Neurai-DePIN/src/script/interpreter.cpp, GetTxFieldHash().
  */
 
 import * as bitcoin from "bitcoinjs-lib";
@@ -31,7 +17,8 @@ export const TXHASH_OUTPUTS = 0x10;
 export const TXHASH_CURRENT_PREVOUT = 0x20;
 export const TXHASH_CURRENT_SEQUENCE = 0x40;
 export const TXHASH_CURRENT_INDEX = 0x80;
-export const TXHASH_ALL = 0xff;
+export const TXHASH_REFINPUTS = 0x100;
+export const TXHASH_ALL = 0x1ff;
 
 /**
  * Bits (in ascending numeric order) whose contribution is a SHA-256d
@@ -148,6 +135,9 @@ function contributionFor(
       }
       return sequenceBytes(tx.ins[inIndex]);
     case TXHASH_CURRENT_INDEX:
+      if (inIndex < 0 || inIndex >= tx.ins.length) {
+        throw new Error(`computeOpTxHash: inIndex ${inIndex} out of range`);
+      }
       return uint32LE(inIndex);
     default:
       throw new Error(`computeOpTxHash: unexpected bit 0x${bit.toString(16)}`);
@@ -162,15 +152,17 @@ export interface ComputeOpTxHashOptions {
    * re-instrumenting the library.
    */
   diagnostics?: Array<{ bit: number; contribution: Buffer }>;
+  /** Raw concatenation of 36-byte vrefin outpoints for a v3 transaction. */
+  refInputs?: Buffer;
 }
 
 /**
  * Compute the 32-byte value consensus would push via `OP_TXHASH(selector)`
  * when the current input being validated is at `inIndex`.
  *
- * `selector` is an 8-bit mask. Bits are processed in ascending numeric
- * order; each set bit contributes its payload (raw scalar or BIP143-style
- * SHA-256d sub-hash) to the outer preimage, which is then SHA-256d'd.
+ * `selector` is a nonzero nine-bit mask. Consensus requires its two-byte LE
+ * encoding on the script stack. `options.refInputs` supplies the serialized
+ * vrefin outpoints for bit 8; non-v3 transactions contribute hash256(empty).
  */
 export function computeOpTxHash(
   tx: bitcoin.Transaction,
@@ -178,25 +170,28 @@ export function computeOpTxHash(
   inIndex: number,
   options?: ComputeOpTxHashOptions
 ): Buffer {
-  if (!Number.isInteger(selector) || selector < 0 || selector > 0xff) {
-    throw new Error(`computeOpTxHash: selector 0x${selector.toString(16)} out of 8-bit range`);
+  if (!Number.isInteger(selector) || selector < 1 || selector > 0x1ff) {
+    throw new Error(`computeOpTxHash: selector 0x${selector.toString(16)} out of NIP-042 range`);
   }
 
-  const parts: Buffer[] = [];
-  for (let bitIdx = 0; bitIdx < 8; bitIdx += 1) {
+  const mask = Buffer.alloc(2);
+  mask.writeUInt16LE(selector, 0);
+  const parts: Buffer[] = [mask];
+  for (let bitIdx = 0; bitIdx < 9; bitIdx += 1) {
     const bit = 1 << bitIdx;
     if ((selector & bit) === 0) continue;
-    const contribution = contributionFor(tx, bit, inIndex);
+    if (bit === TXHASH_REFINPUTS && tx.version === 3 && options?.refInputs === undefined) {
+      throw new Error("computeOpTxHash: v3 reference outpoints are required for bit 8");
+    }
+    const contribution = bit === TXHASH_REFINPUTS
+      ? hash256(tx.version === 3 ? options!.refInputs! : Buffer.alloc(0))
+      : contributionFor(tx, bit, inIndex);
     parts.push(contribution);
     options?.diagnostics?.push({ bit, contribution });
   }
 
-  // Consumer note: with selector 0 this returns SHA-256d of the empty
-  // buffer. Consensus never evaluates that case (OP_TXHASH requires a
-  // non-zero selector on stack per the interpreter), so treating it as a
-  // pure function of selector=0 is a deliberate choice to keep the helper
-  // total and testable.
-  return hash256(Buffer.concat(parts));
+  const tag = Buffer.from(bitcoin.crypto.sha256(Buffer.from("NeuraiTxHash", "utf8")));
+  return Buffer.from(bitcoin.crypto.sha256(Buffer.concat([tag, tag, ...parts])));
 }
 
 // Re-export for convenience; the aggregate set is occasionally useful for

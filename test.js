@@ -1309,7 +1309,7 @@ test("Covenant cancel PQ — accepts legacy raw-push selector encoding (0x01 0x0
 });
 
 // ───────────────────────────────────────────────────────────
-// computeOpTxHash — self-consistency (byte-exact vs node will be in H3.6)
+// computeOpTxHash — NIP-042 tagged digest and vrefin commitments
 // ───────────────────────────────────────────────────────────
 
 /**
@@ -1319,7 +1319,7 @@ test("Covenant cancel PQ — accepts legacy raw-push selector encoding (0x01 0x0
  * library's internal result, the verify() call above will fail and the
  * test will light up.
  */
-function computeOpTxHashForTest(tx, selector, inIndex) {
+function computeOpTxHashForTest(tx, selector, inIndex, refs = []) {
   const h256 = (b) => Buffer.from(bitcoin.crypto.hash256(b));
   const encVarInt = (n) => {
     if (n < 0xfd) return Buffer.from([n]);
@@ -1354,8 +1354,10 @@ function computeOpTxHashForTest(tx, selector, inIndex) {
     return Buffer.concat([v, encVarSlice(o.script)]);
   };
 
-  const parts = [];
-  for (let b = 0; b < 8; b += 1) {
+  const mask = Buffer.alloc(2);
+  mask.writeUInt16LE(selector, 0);
+  const parts = [mask];
+  for (let b = 0; b < 9; b += 1) {
     const bit = 1 << b;
     if ((selector & bit) === 0) continue;
     switch (bit) {
@@ -1392,9 +1394,13 @@ function computeOpTxHashForTest(tx, selector, inIndex) {
         parts.push(i);
         break;
       }
+      case 0x100:
+        parts.push(h256(Buffer.concat(tx.version === 3 ? refs : [])));
+        break;
     }
   }
-  return Buffer.from(h256(Buffer.concat(parts)));
+  const tag = Buffer.from(bitcoin.crypto.sha256(Buffer.from("NeuraiTxHash", "utf8")));
+  return Buffer.from(bitcoin.crypto.sha256(Buffer.concat([tag, tag, ...parts])));
 }
 
 test("computeOpTxHash — aggregate bits use BIP143-style pre-hash (not raw concat)", () => {
@@ -2140,7 +2146,7 @@ test("v3 — PQ AuthScript sighash commits to hashRefInputs (also when empty)", 
   expect(v3Ref).not.toBe(v3Empty);
 });
 
-test("v3 — OP_TXHASH cancel-PQ signature is invariant to vrefin (regression fixture)", () => {
+test("v3 — OP_TXHASH commits to vrefin only when bit 8 is set", () => {
   const fx = buildPQCancelFixture({ selector: 0xff });
   const base = CTcodec.parseTransaction(fx.rawUnsignedTx);
 
@@ -2153,20 +2159,29 @@ test("v3 — OP_TXHASH cancel-PQ signature is invariant to vrefin (regression fi
   const withEmpty = signWithVrefin([]);
   const withRefs = signWithVrefin([V3_REF_A, V3_REF_B]);
 
-  // The OP_TXHASH selector bits (0x01..0x80) do not cover vrefin, so the
-  // CSFS message — and therefore the ML-DSA signature — must be identical…
+  // A mask without bit 8 permits reference input changes.
   expect(withRefs.inputs[0].witness[1]).toBe(withEmpty.inputs[0].witness[1]);
-  // …while the transactions themselves differ (vrefin is serialized and
-  // committed to the txid).
+  // The transaction IDs still differ because vrefin is serialized.
   expect(withRefs.vrefin).toEqual([V3_REF_A, V3_REF_B]);
   expect(CTcodec.computeTxid(withRefs)).not.toBe(CTcodec.computeTxid(withEmpty));
 
-  // And the v2 signature DOES differ from v3 (TXHASH_VERSION bit is set in
-  // selector 0xff).
+  // Version 2 and version 3 also produce different digests for bit 0.
   const v2Signed = CTcodec.parseTransaction(
     Signer.sign(fx.network, fx.rawUnsignedTx, [fx.utxo], fx.privateKeys)
   );
   expect(v2Signed.inputs[0].witness[1]).not.toBe(withEmpty.inputs[0].witness[1]);
+
+  const allFieldsFixture = buildPQCancelFixture({ selector: 0x1ff });
+  const allFieldsBase = CTcodec.parseTransaction(allFieldsFixture.rawUnsignedTx);
+  const signAll = (vrefin) => CTcodec.parseTransaction(Signer.sign(
+    allFieldsFixture.network,
+    CTcodec.serializeTransaction({ ...allFieldsBase, version: 3, vrefin }),
+    [allFieldsFixture.utxo],
+    allFieldsFixture.privateKeys,
+  ));
+  expect(signAll([]).inputs[0].witness[1]).not.toBe(
+    signAll([V3_REF_A, V3_REF_B]).inputs[0].witness[1]
+  );
 });
 
 test("v3 — NIP-025 also applies to v3 transactions", () => {
