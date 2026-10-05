@@ -1,3 +1,9 @@
+/** Supported transaction-signature modes. Advanced sponsorship is opt-in. */
+declare const SIGN_HASH_TYPES: Readonly<{
+    readonly ALL: 1;
+    readonly SINGLE_ANYONECANPAY: 131;
+}>;
+type SignHashType = (typeof SIGN_HASH_TYPES)[keyof typeof SIGN_HASH_TYPES];
 /**
  * neurai-key 5 network labels. The signer only needs the chain (for the WIF
  * version byte and the per-network NIP-025 rule): every mainnet label signs
@@ -23,6 +29,10 @@ interface ISignDebugEvent {
 }
 interface ISignOptions {
     debug?: boolean | ((event: ISignDebugEvent) => void);
+    /** Default for signed inputs. Defaults to ALL; only 0x01 and 0x83 are supported. */
+    hashType?: SignHashType;
+    /** Per-input overrides, indexed by the input's position in the transaction. */
+    inputHashTypes?: Record<number, SignHashType>;
 }
 /**
  * Hint that unlocks spending of a partial-fill covenant branch. Covenant
@@ -75,6 +85,10 @@ interface IUTXO {
 declare function sign(network: SupportedNetwork, rawTransactionHex: string, UTXOs: Array<IUTXO>, privateKeys: Record<string, PrivateKeyInput>, options?: ISignOptions): string;
 declare const Signer: {
     sign: typeof sign;
+    SIGN_HASH_TYPES: Readonly<{
+        readonly ALL: 1;
+        readonly SINGLE_ANYONECANPAY: 131;
+    }>;
 };
 
 /**
@@ -187,5 +201,5 @@ declare function estimateTransactionVbytes(inputs: ReadonlyArray<Pick<IUTXO, "sc
  */
 declare function estimateVirtualSize(_network: SupportedNetwork, rawTransactionHex: string, utxos: ReadonlyArray<IUTXO>): number;
 
-export { VBYTES, Signer as default, estimateInputVbytes, estimateOutputBytes, estimateTransactionVbytes, estimateVirtualSize, getAddressKind, getScriptKind, isPQAddress, isPQScript, sign };
-export type { AddressKind, BareScriptSigningHint, IPQPrivateKeyInput, ISignDebugEvent, ISignOptions, IUTXO, PrivateKeyInput, SupportedNetwork };
+export { SIGN_HASH_TYPES, VBYTES, Signer as default, estimateInputVbytes, estimateOutputBytes, estimateTransactionVbytes, estimateVirtualSize, getAddressKind, getScriptKind, isPQAddress, isPQScript, sign };
+export type { AddressKind, BareScriptSigningHint, IPQPrivateKeyInput, ISignDebugEvent, ISignOptions, IUTXO, PrivateKeyInput, SignHashType, SupportedNetwork };

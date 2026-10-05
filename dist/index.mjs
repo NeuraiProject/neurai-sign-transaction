@@ -16239,7 +16239,12 @@ const xna = {
 };
 
 const ECPair = ECPairFactory(ecc);
-const HASH_TYPE = Transaction.SIGHASH_ALL;
+/** Supported transaction-signature modes. Advanced sponsorship is opt-in. */
+const SIGN_HASH_TYPES = Object.freeze({
+    ALL: 0x01,
+    SINGLE_ANYONECANPAY: 0x83,
+});
+const HASH_TYPE = SIGN_HASH_TYPES.ALL;
 const LEGACY_PREFIX_LENGTH = 25;
 const AUTHSCRIPT_PREFIX_LENGTH = 34;
 const AUTHSCRIPT_TAG = "NeuraiAuthScript";
@@ -16690,26 +16695,38 @@ function getRefInputsData(decoded) {
  * `hashForSignature` cannot produce it: the node's
  * `CTransactionSignatureSerializer` serializes `CompactSize(vrefin.length)`
  * plus each outpoint between vout and nLockTime, unconditionally for v3.
- * Only SIGHASH_ALL (without ANYONECANPAY) is implemented — the only mode
- * this library signs with.
+ * The supported modes are ALL and SINGLE|ANYONECANPAY. Reference inputs
+ * remain committed in both modes, as required by the node's serializer.
  */
 function hashForLegacySignatureV3(tx, refInputs, inIndex, scriptPubKey, hashType) {
+    if (hashType !== SIGN_HASH_TYPES.ALL && hashType !== SIGN_HASH_TYPES.SINGLE_ANYONECANPAY) {
+        throw new Error("Unsupported legacy v3 hash type");
+    }
+    const single = hashType === SIGN_HASH_TYPES.SINGLE_ANYONECANPAY;
+    // Never sign the historical SINGLE-without-output constant hash.
+    if (single && inIndex >= tx.outs.length)
+        throw new Error("SINGLE requires a paired output");
     const version = bufferExports.Buffer.alloc(4);
     version.writeInt32LE(tx.version, 0);
     const locktime = bufferExports.Buffer.alloc(4);
     locktime.writeUInt32LE(tx.locktime, 0);
     const hashTypeBuffer = bufferExports.Buffer.alloc(4);
     hashTypeBuffer.writeUInt32LE(hashType >>> 0, 0);
-    const parts = [version, encodeVarInt(tx.ins.length)];
+    const parts = [version, encodeVarInt(single ? 1 : tx.ins.length)];
     for (let i = 0; i < tx.ins.length; i++) {
+        if (single && i !== inIndex)
+            continue;
         const input = tx.ins[i];
         const sequence = bufferExports.Buffer.alloc(4);
         sequence.writeUInt32LE(input.sequence, 0);
         parts.push(serializeOutpoint(input), i === inIndex ? encodeVarSlice(scriptPubKey) : encodeVarInt(0), sequence);
     }
-    parts.push(encodeVarInt(tx.outs.length));
-    for (const out of tx.outs) {
-        parts.push(serializeOutput(out));
+    parts.push(encodeVarInt(single ? inIndex + 1 : tx.outs.length));
+    for (let i = 0; i < (single ? inIndex + 1 : tx.outs.length); i++) {
+        // CTxOut() is value -1 and an empty script, not a zero-value output.
+        parts.push(single && i !== inIndex
+            ? bufferExports.Buffer.concat([bufferExports.Buffer.alloc(8, 0xff), encodeVarInt(0)])
+            : serializeOutput(tx.outs[i]));
     }
     parts.push(encodeVarInt(refInputs.count), refInputs.concat);
     parts.push(locktime, hashTypeBuffer);
@@ -16723,21 +16740,29 @@ function hashForLegacySignatureV3(tx, refInputs, inIndex, scriptPubKey, hashType
  * nLockTime and authType, which separates their signatures from generic v1.
  */
 function hashForAuthScript(tx, inIndex, witnessScript, amount, hashType, authType, refInputs = null, strictWitnessVersion = null) {
+    const baseType = hashType & 0x1f;
+    const anyoneCanPay = (hashType & Transaction.SIGHASH_ANYONECANPAY) !== 0;
     let hashPrevouts = ZERO_32;
     let hashSequence = ZERO_32;
     let hashOutputs = ZERO_32;
-    {
+    if (!anyoneCanPay) {
         hashPrevouts = hash256(bufferExports.Buffer.concat(tx.ins.map(serializeOutpoint)));
     }
-    {
+    if (!anyoneCanPay &&
+        baseType !== Transaction.SIGHASH_SINGLE &&
+        baseType !== Transaction.SIGHASH_NONE) {
         hashSequence = hash256(bufferExports.Buffer.concat(tx.ins.map((input) => {
             const sequence = bufferExports.Buffer.alloc(4);
             sequence.writeUInt32LE(input.sequence, 0);
             return sequence;
         })));
     }
-    {
+    if (baseType !== Transaction.SIGHASH_SINGLE &&
+        baseType !== Transaction.SIGHASH_NONE) {
         hashOutputs = hash256(bufferExports.Buffer.concat(tx.outs.map(serializeOutput)));
+    }
+    else if (baseType === Transaction.SIGHASH_SINGLE && inIndex < tx.outs.length) {
+        hashOutputs = hash256(serializeOutput(tx.outs[inIndex]));
     }
     const input = tx.ins[inIndex];
     const outpoint = serializeOutpoint(input);
@@ -16779,6 +16804,35 @@ function getInputReference(input) {
         vout: input.index,
     };
 }
+function resolveInputHashTypes(options, decoded) {
+    const validate = (value) => {
+        if (value !== SIGN_HASH_TYPES.ALL && value !== SIGN_HASH_TYPES.SINGLE_ANYONECANPAY) {
+            throw new Error("hashType must be ALL (0x01) or SINGLE|ANYONECANPAY (0x83)");
+        }
+        return value;
+    };
+    const defaultType = options?.hashType === undefined ? SIGN_HASH_TYPES.ALL : validate(options.hashType);
+    const types = decoded.inputs.map(() => defaultType);
+    const overrides = options?.inputHashTypes;
+    if (overrides !== undefined) {
+        if (overrides === null || typeof overrides !== "object" || Array.isArray(overrides)) {
+            throw new Error("inputHashTypes must be an object keyed by input index");
+        }
+        for (const [key, value] of Object.entries(overrides)) {
+            const index = Number(key);
+            if (!Number.isSafeInteger(index) || index < 0 || String(index) !== key || index >= types.length) {
+                throw new Error(`Invalid inputHashTypes index: ${key}`);
+            }
+            types[index] = validate(value);
+        }
+    }
+    for (let i = 0; i < types.length; i++) {
+        if (types[i] === SIGN_HASH_TYPES.SINGLE_ANYONECANPAY && i >= decoded.outputs.length) {
+            throw new Error(`SINGLE requires a paired output for input ${i}`);
+        }
+    }
+    return types;
+}
 function createDebugLogger(debugOption) {
     if (debugOption === false) {
         return () => { };
@@ -16803,6 +16857,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
     // never touches the wire: the signed hex is re-serialized by the codec.
     const decoded = parseTransaction(rawTransactionHex);
     const refInputs = getRefInputsData(decoded);
+    const inputHashTypes = resolveInputHashTypes(options, decoded);
     // Consensus (tx_verify.cpp:520-537): within a v3 tx, vrefin entries must
     // be unique (bad-txns-vrefin-duplicate) and must not overlap any vin
     // prevout (bad-txns-vrefin-overlap-vin). Fail at signing time instead of
@@ -16908,6 +16963,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
     }
     for (let i = 0; i < tx.ins.length; i++) {
         const input = tx.ins[i];
+        const hashType = inputHashTypes[i];
         const { txid, vout } = getInputReference(input);
         const utxo = getUTXO(txid, vout);
         debug({
@@ -16920,6 +16976,8 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
             utxoScript: utxo?.script ?? null,
         });
         if (!utxo) {
+            if (hashType !== HASH_TYPE)
+                throw new Error(`Advanced signing requires the prevout UTXO for input ${i}`);
             debug({
                 step: "skip-missing-utxo",
                 i,
@@ -16932,6 +16990,14 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
         const inputIsLegacy = isLegacyScript(scriptPubKey);
         const witnessVersion = getAuthScriptWitnessVersion(scriptPubKey);
         const inputIsAuthScript = witnessVersion !== null;
+        if (hashType !== HASH_TYPE) {
+            if (!inputIsLegacy && witnessVersion !== STRICT_PQ_WITNESS_V2 && witnessVersion !== STRICT_ECDSA_WITNESS_V3) {
+                throw new Error(`SINGLE|ANYONECANPAY only supports P2PKH and strict PQ/ECDSA inputs (input ${i})`);
+            }
+            if (!hasPrivateKeyForAddress(utxo.address)) {
+                throw new Error(`Advanced signing requires a private key for input ${i}`);
+            }
+        }
         debug({
             step: "script-type",
             i,
@@ -17127,7 +17193,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
                     bufferExports.Buffer.from(ml_dsa44.sign(new Uint8Array(sighash), new Uint8Array(pqMaterial.secretKey), {
                         extraEntropy: false,
                     })),
-                    bufferExports.Buffer.from([HASH_TYPE]),
+                    bufferExports.Buffer.from([hashType]),
                 ]);
             }
             else {
@@ -17136,13 +17202,13 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
                     throw new Error(`strict ECDSA (witness v3) input of ${utxo.address} needs a compressed key; the WIF encodes an uncompressed one`);
                 }
                 publicKey = bufferExports.Buffer.from(keyPair.publicKey);
-                signWith = (sighash) => bufferExports.Buffer.from(signature.encode(bufferExports.Buffer.from(keyPair.sign(sighash)), HASH_TYPE));
+                signWith = (sighash) => bufferExports.Buffer.from(signature.encode(bufferExports.Buffer.from(keyPair.sign(sighash)), hashType));
             }
             const expectedCommitment = getAuthScriptCommitment(template.authType, publicKey, template.witnessScript, witnessVersion);
             if (!actualCommitment.equals(expectedCommitment)) {
                 throw new Error(`AuthScript commitment mismatch for ${txid}:${vout} (witness v${witnessVersion}). The provided key does not match the prevout script`);
             }
-            const sighash = hashForAuthScript(tx, i, template.witnessScript, getSighashAmount(utxo), HASH_TYPE, template.authType, refInputs, witnessVersion);
+            const sighash = hashForAuthScript(tx, i, template.witnessScript, getSighashAmount(utxo), hashType, template.authType, refInputs, witnessVersion);
             tx.setInputScript(i, bufferExports.Buffer.alloc(0));
             tx.setWitness(i, [
                 bufferExports.Buffer.from([template.authType]),
@@ -17150,7 +17216,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
                 publicKey,
                 template.witnessScript,
             ]);
-            debug({ step: "strict-witness-set", i, witnessVersion, authType: template.authType });
+            debug({ step: "strict-witness-set", i, witnessVersion, authType: template.authType, hashType, sighashHex: sighash.toString("hex") });
             continue;
         }
         if (inputIsAuthScript) {
@@ -17256,15 +17322,16 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
         }
         const keyPair = getKeyPairByAddress(utxo.address);
         const sighash = refInputs
-            ? hashForLegacySignatureV3(tx, refInputs, i, scriptPubKey, HASH_TYPE)
-            : tx.hashForSignature(i, scriptPubKey, HASH_TYPE);
+            ? hashForLegacySignatureV3(tx, refInputs, i, scriptPubKey, hashType)
+            : tx.hashForSignature(i, scriptPubKey, hashType);
         const rawSignature = keyPair.sign(sighash);
-        const signatureWithHashType = signature.encode(bufferExports.Buffer.from(rawSignature), HASH_TYPE);
+        const signatureWithHashType = signature.encode(bufferExports.Buffer.from(rawSignature), hashType);
         const scriptSig = compile([
             signatureWithHashType,
             bufferExports.Buffer.from(keyPair.publicKey),
         ]);
         tx.setInputScript(i, scriptSig);
+        debug({ step: "legacy-signed", i, hashType, sighashHex: bufferExports.Buffer.from(sighash).toString("hex") });
     }
     debug({
         step: "final-inputs",
@@ -17291,6 +17358,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
 }
 const Signer = {
     sign,
+    SIGN_HASH_TYPES,
 };
 
 // Worst-case witness item sizes for a PQ AuthScript spend with the default
@@ -17590,5 +17658,5 @@ function dummyCovenantWitness(hint) {
     }
 }
 
-export { VBYTES, Signer as default, estimateInputVbytes, estimateOutputBytes, estimateTransactionVbytes, estimateVirtualSize, getAddressKind, getScriptKind, isPQAddress, isPQScript, sign };
+export { SIGN_HASH_TYPES, VBYTES, Signer as default, estimateInputVbytes, estimateOutputBytes, estimateTransactionVbytes, estimateVirtualSize, getAddressKind, getScriptKind, isPQAddress, isPQScript, sign };
 //# sourceMappingURL=index.mjs.map

@@ -12,3 +12,10 @@ export const values = [
 export const signFromDefault: typeof st.sign = st.default.sign;
 export const kind: st.AddressKind = st.getScriptKind("5320" + "00".repeat(32));
 export type Utxo = st.IUTXO;
+export const sponsorOptions: st.ISignOptions = {
+  hashType: st.SIGN_HASH_TYPES.ALL,
+  inputHashTypes: { 2: st.SIGN_HASH_TYPES.SINGLE_ANYONECANPAY },
+};
+export const sponsorMode: st.SignHashType = st.default.SIGN_HASH_TYPES.SINGLE_ANYONECANPAY;
+// @ts-expect-error unsupported transaction signature mode
+export const invalidMode: st.SignHashType = 0x82;

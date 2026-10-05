@@ -4,6 +4,14 @@ Signs a Neurai transaction.
 
 The purpose of this project is to enable signing XNA, asset and AuthScript inputs in pure JavaScript for every Neurai address type: classic P2PKH, generic AuthScript witness v1 with its three auth types (NoAuth, PQ and Legacy), strict PQ witness v2 and strict ECDSA witness v3.
 
+## 3.1.0: opt-in sponsor signatures
+
+`sign` accepts `hashType` and `inputHashTypes` to sign selected inputs with
+`SINGLE|ANYONECANPAY` (`0x83`) for P2PKH, strict PQ witness v2 and strict ECDSA
+witness v3. `SIGHASH_ALL` remains the default, so existing calls produce the
+same signatures. `SIGN_HASH_TYPES` and the `SignHashType` type are exported.
+See [Opt-in sponsor signatures](#opt-in-sponsor-signatures-310).
+
 ## 3.0.3: NIP-042 covenant cancellation
 
 The reset testnet uses a two-byte little-endian `OP_TXHASH` selector and the
@@ -81,9 +89,46 @@ The `sign` method has four required arguments and one optional argument:
 2. raw transaction hex
 3. array of UTXO objects
 4. private keys object keyed by address/identifier
-5. optional diagnostics object: `{ debug }`
+5. optional signing options: `{ debug, hashType, inputHashTypes }`
 
 This library signs an already-built raw transaction. It does not build the raw transaction for you.
+
+### Opt-in sponsor signatures (3.1.0)
+
+`SIGHASH_ALL` (`0x01`) remains the default. P2PKH, strict PQ witness v2 and
+strict ECDSA witness v3 also support `SINGLE|ANYONECANPAY` (`0x83`). Select
+the mode explicitly for the sponsor input rather than weakening every input:
+
+```js
+import { sign, SIGN_HASH_TYPES } from "@neuraiproject/neurai-sign-transaction";
+
+const signed = sign("xna-test", unsignedHex, utxos, keys, {
+  debug: false,
+  inputHashTypes: { 2: SIGN_HASH_TYPES.SINGLE_ANYONECANPAY },
+});
+```
+
+`hashType` sets the default for signed inputs; `inputHashTypes` overrides it
+by transaction input index. Both accept only `0x01` and `0x83`. Unknown modes,
+invalid indices, missing sponsor UTXOs/keys and SINGLE inputs without a paired
+output are rejected. The advanced mode is not supported for generic witness
+v1, NoAuth or covenant signing hints; their existing ALL behavior is unchanged.
+Unselected inputs with no supplied UTXO remain untouched, including prebuilt
+pool witnesses. Every input selected for `0x83` needs its UTXO and key; for a
+partially signed transaction, prefer a per-input override to a global mode.
+Constants and types are exported by ESM/CJS/browser entry
+points; the default/global Signer also exposes `SIGN_HASH_TYPES`.
+
+The sponsor signs its own prevout/sequence and the complete output at the same
+index, as well as version, locktime and all reference inputs in transaction
+v3. Other inputs and outputs are not protected by this signature. Legacy
+also binds the pair's index; strict PQ/ECDSA permit moving the pair together.
+A pool covenant must independently enforce its fixed index, state transition,
+asset conservation and allowed fee. Confirm the sponsor's paired change
+destination/value and the actual prevout before signing; this API is not a
+pool validator. Asset script suffixes belong to the signed script/output too.
+
+This change does not activate any consensus rule.
 
 For legacy P2PKH inputs, the value can be the WIF string directly, or an object like `{ WIF }`.
 

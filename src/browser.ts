@@ -1,7 +1,8 @@
-export { sign } from "./shared";
+export { sign, SIGN_HASH_TYPES } from "./shared";
 export type {
   ISignDebugEvent,
   ISignOptions,
+  SignHashType,
   IUTXO,
   IPQPrivateKeyInput,
   PrivateKeyInput,

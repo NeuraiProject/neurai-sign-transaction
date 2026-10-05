@@ -1,3 +1,9 @@
+/** Supported transaction-signature modes. Advanced sponsorship is opt-in. */
+export declare const SIGN_HASH_TYPES: Readonly<{
+    readonly ALL: 1;
+    readonly SINGLE_ANYONECANPAY: 131;
+}>;
+export type SignHashType = (typeof SIGN_HASH_TYPES)[keyof typeof SIGN_HASH_TYPES];
 /**
  * neurai-key 5 network labels. The signer only needs the chain (for the WIF
  * version byte and the per-network NIP-025 rule): every mainnet label signs
@@ -23,6 +29,10 @@ export interface ISignDebugEvent {
 }
 export interface ISignOptions {
     debug?: boolean | ((event: ISignDebugEvent) => void);
+    /** Default for signed inputs. Defaults to ALL; only 0x01 and 0x83 are supported. */
+    hashType?: SignHashType;
+    /** Per-input overrides, indexed by the input's position in the transaction. */
+    inputHashTypes?: Record<number, SignHashType>;
 }
 /**
  * Hint that unlocks spending of a partial-fill covenant branch. Covenant
@@ -75,5 +85,9 @@ export interface IUTXO {
 export declare function sign(network: SupportedNetwork, rawTransactionHex: string, UTXOs: Array<IUTXO>, privateKeys: Record<string, PrivateKeyInput>, options?: ISignOptions): string;
 declare const Signer: {
     sign: typeof sign;
+    SIGN_HASH_TYPES: Readonly<{
+        readonly ALL: 1;
+        readonly SINGLE_ANYONECANPAY: 131;
+    }>;
 };
 export default Signer;
