@@ -1774,6 +1774,20 @@ test("Covenant fill — rejects amounts outside (0, wrapper total]", () => {
     .toThrow(/must be > 0/);
 });
 
+test("Covenant fill — rejects an order that is not input 0", () => {
+  const fx = buildLegacyFillFixture({ amount: FILL_ORDER_TOTAL });
+  const tx = decodeTestTransaction(fx.rawUnsignedTx);
+  const orderInput = tx.ins[0];
+  const ahead = new bitcoin.Transaction();
+  ahead.version = tx.version;
+  ahead.addInput(Buffer.from("dd".repeat(32), "hex"), 0, 0xfffffffe, Buffer.alloc(0));
+  ahead.addInput(orderInput.hash, orderInput.index, orderInput.sequence, Buffer.alloc(0));
+  for (const out of tx.outs) ahead.addOutput(out.script, out.value);
+
+  expect(() => Signer.sign(fx.network, ahead.toHex(), [fx.utxo], {}))
+    .toThrow(/can only be filled as input 0/);
+});
+
 test("Covenant fill — rejects when covenantScriptHex does not hash to the commitment", () => {
   const fx = buildLegacyFillFixture({ amount: 1n });
   const tampered = {

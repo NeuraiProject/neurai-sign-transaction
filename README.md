@@ -4,6 +4,26 @@ Signs a Neurai transaction.
 
 The purpose of this project is to enable signing XNA, asset and AuthScript inputs in pure JavaScript for every Neurai address type: classic P2PKH, generic AuthScript witness v1 with its three auth types (NoAuth, PQ and Legacy), strict PQ witness v2 and strict ECDSA witness v3.
 
+## 3.2.0: input-0 bound partial-fill covenants
+
+Requires `@neuraiproject/neurai-scripts` `^0.10.0`, which fixes the
+partial-fill covenant: its fill branches read the order amount from input 0
+without checking that the order was input 0, so a buyer could drain an order
+through a foreign input 0 or settle several orders with one payment. The
+covenant now binds its fill branches to input 0 with `OP_TXHASH`.
+
+- Covenant hints only accept covenants with that binding. Orders built with
+  neurai-scripts < 0.10.0 must be cancelled with 3.1.0.
+- `covenant-fill` throws when the order is not input 0, instead of producing
+  a transaction the node rejects.
+- `covenant-cancel-legacy` signs with the secp256k1 key of `utxo.address`
+  whose HASH160 is the covenant's key hash, P2PKH or strict ECDSA v3 alike:
+  an ECDSA v3 seller is paid at its `nq1r…` address (neurai-scripts
+  `paymentAddress` + `sellerPubKeyHash`) and cancels with its wallet key.
+- `npm run test:regtest` now runs the whole order lifecycle against a node:
+  funding with an asset, partial and full fills, ECDSA (P2PKH and v3) and PQ
+  cancellation, and the two attacks above, which the node rejects.
+
 ## 3.1.0: opt-in sponsor signatures
 
 `sign` accepts `hashType` and `inputHashTypes` to sign selected inputs with

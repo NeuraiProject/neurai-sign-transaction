@@ -136,11 +136,21 @@ type ChainNetwork = {
  * `taggedHash("NeuraiAuthScript", 0x01 || 0x00 || SHA256(covenantScript))`
  * matches the 32-byte program in the prevout before spending.
  *
+ * `covenant-cancel-legacy` signs the ECDSA cancel branch with the secp256k1
+ * key of `utxo.address` (a P2PKH or strict ECDSA v3 wallet) whose HASH160
+ * matches the covenant's `sellerPubKeyHash`. `covenant-cancel-pq` signs the
+ * ML-DSA-44 branch.
+ *
  * `covenant-fill` needs no signature and therefore no private key. The
  * order total is NEVER taken from the caller: it is derived from the
  * prevout's transfer asset wrapper (`amountRaw`), the on-chain source of
  * truth, so the full/partial branch choice cannot be corrupted by a wrong
- * total. `amount` is the raw (satoshi-scaled) asset quantity to fill.
+ * total. `amount` is the raw (satoshi-scaled) asset quantity to fill. The
+ * order must be input 0 of the transaction: the covenant's fill branches
+ * fail at any other index.
+ *
+ * Every hint parses `covenantScriptHex` with neurai-scripts, which only
+ * accepts covenants carrying the input-0 binding (neurai-scripts ≥ 0.10.0).
  */
 export type BareScriptSigningHint =
   | { kind: "covenant-cancel-legacy"; covenantScriptHex: string }
@@ -1136,6 +1146,13 @@ export function sign(
       }
 
       if (hint.kind === "covenant-fill") {
+        // The covenant's fill branches are bound to input 0 (neurai-scripts
+        // 0.10.0); at any other index the node rejects the transaction.
+        if (i !== 0) {
+          throw new Error(
+            `covenant-fill for ${txid}:${vout} is input ${i}: a partial-fill order can only be filled as input 0`
+          );
+        }
         // A NOAUTH commitment match alone must not let an arbitrary
         // witness script be spent "as a fill": the covenant has to parse
         // as a partial-fill order (legacy or PQ).

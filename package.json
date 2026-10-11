@@ -1,7 +1,7 @@
 {
   "name": "@neuraiproject/neurai-sign-transaction",
   "description": "Signs a Neurai transaction",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "source": "src/index.ts",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -59,7 +59,7 @@
   "dependencies": {
     "@bitcoinerlab/secp256k1": "1.2.0",
     "@neuraiproject/neurai-create-transaction": "^0.9.2",
-    "@neuraiproject/neurai-scripts": "^0.9.2",
+    "@neuraiproject/neurai-scripts": "^0.10.0",
     "@noble/post-quantum": "^0.6.0",
     "bitcoinjs-lib": "7.0.1",
     "buffer": "^6.0.3",
