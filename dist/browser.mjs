@@ -17382,7 +17382,7 @@ const ASSET_PAYLOAD_MARKERS = [
     bufferExports.Buffer.from("xna", "ascii"),
 ];
 function hasAssetMarker(payload) {
-    return ASSET_PAYLOAD_MARKERS.some((marker) => payload.subarray(0, 3).equals(marker));
+    return ASSET_PAYLOAD_MARKERS.some((marker) => sameBytes(payload.subarray(0, 3), marker));
 }
 // 't' transfer, 'q' new, 'o' owner, 'r' reissue (assets.h:19-23).
 const XNA_ASSET_TYPE_MARKERS = new Set([0x74, 0x71, 0x6f, 0x72]);
@@ -17506,6 +17506,21 @@ function getSighashAmount(utxo) {
         return 0n;
     }
     return getUTXOAmount(utxo);
+}
+/**
+ * Byte equality of any two Uint8Arrays. Not `Buffer#equals`: it only accepts
+ * Buffers, and under Hermes (React Native) `subarray()` of a Buffer from the
+ * bundled `buffer` package is a plain Uint8Array, so `equals` throws "Argument
+ * must be a Buffer" or does not exist at all.
+ */
+function sameBytes(a, b) {
+    if (a.length !== b.length)
+        return false;
+    for (let i = 0; i < a.length; i += 1) {
+        if (a[i] !== b[i])
+            return false;
+    }
+    return true;
 }
 function sha256(buffer) {
     return bufferExports.Buffer.from(sha256$4(buffer));
@@ -18059,7 +18074,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
             const covenantScriptBytes = bufferFromHex(hint.covenantScriptHex, `${hint.kind} covenantScriptHex`);
             const expectedCommitment = getAuthScriptCommitment(NOAUTH_TYPE, null, covenantScriptBytes);
             const actualCommitment = scriptPubKey.subarray(2, AUTHSCRIPT_PREFIX_LENGTH);
-            if (!expectedCommitment.equals(actualCommitment)) {
+            if (!sameBytes(expectedCommitment, actualCommitment)) {
                 throw new Error(`${hint.kind} commitment mismatch for ${txid}:${vout}: hint.covenantScriptHex does not hash to the UTXO's AuthScript commitment`);
             }
             if (hint.kind === "covenant-fill") {
@@ -18141,7 +18156,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
                 const keyPair = getKeyPairByAddress(utxo.address);
                 const derivedPKH = hash160(bufferExports.Buffer.from(keyPair.publicKey));
                 const covenantPKH = bufferExports.Buffer.from(parsed.sellerPubKeyHash);
-                if (!derivedPKH.equals(covenantPKH)) {
+                if (!sameBytes(derivedPKH, covenantPKH)) {
                     throw new Error(`covenant cancel key for ${txid}:${vout} does not match the covenant sellerPubKeyHash (got ${derivedPKH.toString("hex")}, expected ${covenantPKH.toString("hex")})`);
                 }
                 // AuthScript-NOAUTH sighash: scriptCode = the covenant (witness
@@ -18175,7 +18190,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
             const pqMaterial = getPQMaterialByAddress(utxo.address);
             const derivedPqCommitment = sha256(pqMaterial.serializedPublicKey);
             const covenantPqCommitment = bufferExports.Buffer.from(parsedPQ.pubKeyCommitment);
-            if (!derivedPqCommitment.equals(covenantPqCommitment)) {
+            if (!sameBytes(derivedPqCommitment, covenantPqCommitment)) {
                 throw new Error(`PQ covenant cancel key commitment mismatch for ${txid}:${vout}: ` +
                     `wallet pubkey hashes to ${derivedPqCommitment.toString("hex")}, ` +
                     `covenant commits to ${covenantPqCommitment.toString("hex")}`);
@@ -18243,7 +18258,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
                 signWith = (sighash) => bufferExports.Buffer.from(signature.encode(bufferExports.Buffer.from(keyPair.sign(sighash)), hashType));
             }
             const expectedCommitment = getAuthScriptCommitment(template.authType, publicKey, template.witnessScript, witnessVersion);
-            if (!actualCommitment.equals(expectedCommitment)) {
+            if (!sameBytes(actualCommitment, expectedCommitment)) {
                 throw new Error(`AuthScript commitment mismatch for ${txid}:${vout} (witness v${witnessVersion}). The provided key does not match the prevout script`);
             }
             const sighash = hashForAuthScript(tx, i, template.witnessScript, getSighashAmount(utxo), hashType, template.authType, refInputs, witnessVersion);
@@ -18298,7 +18313,7 @@ function sign(network, rawTransactionHex, UTXOs, privateKeys, options) {
                 witnessScriptHex: spendTemplate.witnessScript.toString("hex"),
                 functionalArgs: spendTemplate.functionalArgs.map((arg) => arg.toString("hex")),
             });
-            if (!actualCommitment.equals(expectedCommitment)) {
+            if (!sameBytes(actualCommitment, expectedCommitment)) {
                 throw new Error(`AuthScript commitment mismatch for ${txid}:${vout}. The provided key/template does not match the prevout script`);
             }
             let witnessStack;

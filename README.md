@@ -4,6 +4,15 @@ Signs a Neurai transaction.
 
 The purpose of this project is to enable signing XNA, asset and AuthScript inputs in pure JavaScript for every Neurai address type: classic P2PKH, generic AuthScript witness v1 with its three auth types (NoAuth, PQ and Legacy), strict PQ witness v2 and strict ECDSA witness v3.
 
+## 3.3.1: React Native (Hermes)
+
+Byte comparisons (covenant and AuthScript commitments, the cancel key, the asset
+payload marker) no longer use `Buffer#equals`. Under Hermes, `subarray()` of a
+Buffer from the bundled `buffer` package returns a plain `Uint8Array`, so
+`equals` threw "Argument must be a Buffer" (or did not exist): NeuraiWallet could
+not sign an order cancellation. `test-hermes.js` signs every family and both
+covenant cancels with Hermes' `subarray` and checks the bytes match Node's.
+
 ## 3.3.0: PSBT signing
 
 `signPsbt(network, psbt, privateKeys, { inputs, hashType?, inputHashTypes?, debug? })`
