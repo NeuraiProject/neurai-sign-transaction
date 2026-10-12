@@ -5,9 +5,11 @@ import Signer, {
   estimateVirtualSize,
   getAddressKind,
   sign,
+  signPsbt,
   SIGN_HASH_TYPES,
   VBYTES,
   type AddressKind,
+  type ISignPsbtOptions,
   type IUTXO,
   type PrivateKeyInput,
   type SupportedNetwork,
@@ -20,6 +22,9 @@ const utxos: IUTXO[] = [];
 const keys: Record<string, PrivateKeyInput> = {};
 export const signFromDefault: typeof sign = Signer.sign;
 export const signed = (raw: string): string => sign(network, raw, utxos, keys, { debug: false });
+const psbtOptions: ISignPsbtOptions = { inputs: [{ index: 0, address: "tAddr" }], inputHashTypes: { 0: SIGN_HASH_TYPES.ALL } };
+export const signedPsbt = (psbt: string): string => signPsbt(network, psbt, keys, psbtOptions);
+export const signPsbtFromDefault: typeof signPsbt = Signer.signPsbt;
 export const size = (raw: string): number => estimateVirtualSize(network, raw, utxos);
 export const kind: AddressKind = getAddressKind("tpq1z5age5p2v5q9w6qzadkjp4yep8gpr56q6mzd4fu6eus8ntulul6vq3q07pc");
 export const ecdsaInput: number = VBYTES.ecdsaWitnessInputVbytes;

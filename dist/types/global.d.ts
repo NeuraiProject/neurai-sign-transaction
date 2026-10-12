@@ -1,4 +1,4 @@
-import Signer from "./shared";
+import Signer from "./signer";
 declare global {
     interface Window {
         NeuraiSignTransaction?: typeof Signer;

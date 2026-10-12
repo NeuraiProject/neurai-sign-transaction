@@ -212,6 +212,21 @@ function signFill({ inputsBefore = [], orders, covenantHex, buyer, outputs }) {
   return { allowed: Boolean(result.allowed), reason: result["reject-reason"], hex: signedHex };
 }
 
+// ─── PSBT (3.3.0) ───────────────────────────────────────────────────────────
+// The same operations signed through signPsbt: every input carries its
+// previous transaction, each signer signs its own input in its own copy of the
+// PSBT, and neurai-create-transaction combines, finalizes and extracts.
+function signThroughPsbt(rawTx, utxos, signers, fields = []) {
+  const psbt = CT.createPsbt({
+    unsignedTx: rawTx,
+    inputs: utxos.map((u, i) => ({ previousTx: cli("getrawtransaction", u.txid), ...(fields[i] ?? {}) })),
+  });
+  const parts = signers.map((signer) => Signer.signPsbt("xna-test", psbt, PRIVATE_KEYS, { inputs: [signer], debug: false }));
+  const { hex } = CT.extractPsbtTransaction(CT.finalizePsbt(CT.combinePsbts(psbt, ...parts)));
+  const [result] = cliJson("testmempoolaccept", JSON.stringify([hex]), "true");
+  return { allowed: Boolean(result.allowed), reason: result["reject-reason"], hex };
+}
+
 describe.skipIf(MODE === "skip")("every address type, signed by this library, accepted by the node", () => {
   beforeAll(async () => {
     const neuraid = MODE === "docker" ? CONTAINER_NEURAID : LOCAL_NEURAID;
@@ -593,4 +608,94 @@ describe.skipIf(MODE === "skip")("every address type, signed by this library, ac
     const [result] = cliJson("testmempoolaccept", JSON.stringify([tx.toHex()]), "true");
     expect(Boolean(result.allowed)).toBe(false);
   }, 60_000);
+
+  it("signs every address type through PSBTs, one signer per input", () => {
+    const kinds = ["legacy", "authscriptPQ", "pq", "ecdsa"];
+    for (const kind of kinds) topUp(WALLETS[kind].address);
+    const utxos = kinds.map((kind) => xnaUtxo(WALLETS[kind].address));
+    const rawTx = buildPayment(utxos, WALLETS.ecdsa.address);
+    const result = signThroughPsbt(rawTx, utxos, utxos.map((u, index) => ({ index, address: u.address })));
+    expect(result.allowed, `reject: ${result.reason}`).toBe(true);
+    expect(result.hex).toBe(Signer.sign("xna-test", rawTx, utxos, PRIVATE_KEYS, { debug: false }));
+    sendAndMine(result.hex);
+  }, 90_000);
+
+  it("spends the outputs of a version-3 transaction in a version-3 transaction with vrefin, through a PSBT", () => {
+    topUp(WALLETS.legacy.address);
+    const fund = xnaUtxoAtLeast(WALLETS.legacy.address, 10n * COIN);
+    const v3Txid = sendAndMine(
+      Signer.sign("xna-test", CT.serializeTransaction({
+        version: 3,
+        inputs: [{ txid: fund.txid, vout: fund.outputIndex, scriptSigHex: "", sequence: 0xffffffff }],
+        outputs: [
+          CT.createXnaOutput(WALLETS.legacy.address, 3n * COIN),
+          CT.createXnaOutput(WALLETS.ecdsa.address, 3n * COIN),
+          CT.createXnaOutput(WALLETS.legacy.address, BigInt(fund.satoshis) - 6n * COIN - COVENANT_FEE),
+        ],
+        vrefin: [],
+        locktime: 0,
+      }), [fund], PRIVATE_KEYS, { debug: false })
+    );
+    expect(cliJson("getrawtransaction", v3Txid, 1).version).toBe(3);
+    const spent = [WALLETS.legacy, WALLETS.ecdsa].map((w, vout) =>
+      utxosOf(w.address).find((u) => u.txid === v3Txid && u.outputIndex === vout)
+    );
+    const reference = xnaUtxo(WALLETS.pq.address);
+    const rawTx = CT.serializeTransaction({
+      version: 3,
+      inputs: spent.map((u) => ({ txid: u.txid, vout: u.outputIndex, scriptSigHex: "", sequence: 0xffffffff })),
+      outputs: [CT.createXnaOutput(WALLETS.pq.address, 6n * COIN - COVENANT_FEE)],
+      vrefin: [{ txid: reference.txid, vout: reference.outputIndex }],
+      locktime: 0,
+    });
+    const result = signThroughPsbt(rawTx, spent, spent.map((u, index) => ({ index, address: u.address })));
+    expect(result.allowed, `reject: ${result.reason}`).toBe(true);
+    expect(CT.parseTransaction(result.hex).vrefin).toHaveLength(1);
+    sendAndMine(result.hex);
+  }, 90_000);
+
+  it.each([
+    ["P2PKH", "legacy", "PSBTCANCELA"],
+    ["ECDSA v3", "ecdsa", "PSBTCANCELB"],
+    ["PQ", "pq", "PSBTCANCELC"],
+  ])("cancels an order of a %s seller through a PSBT (witnessScript)", (_, kind, token) => {
+    const seller = WALLETS[kind];
+    topUp(seller.address);
+    cli("issue", token, 100, seller.address);
+    cli("generate", 1);
+    const covenantHex =
+      kind === "pq"
+        ? Scripts.buildPartialFillScriptPQHex({
+            paymentAddress: seller.address,
+            pubKeyCommitment: new Uint8Array(bitcoin.crypto.sha256(Buffer.concat([Buffer.from([0x05]), Buffer.from(seller.publicKey, "hex")]))),
+            tokenId: token,
+            unitPriceSats: 1n,
+          })
+        : Scripts.buildPartialFillScriptHex({
+            paymentAddress: seller.address,
+            sellerPubKeyHash: new Uint8Array(bitcoin.crypto.hash160(Buffer.from(seller.publicKey, "hex"))),
+            tokenId: token,
+            unitPriceSats: 1n,
+          });
+    const marker = assetMarker();
+    const order = fundOrder(seller, token, 10n * COIN, covenantHex);
+    const fees = xnaUtxoAtLeast(seller.address, COVENANT_FEE);
+    const rawTx = CT.createUnsignedTransaction({
+      inputs: [order, fees].map((u) => ({ txid: u.txid, vout: u.outputIndex })),
+      outputs: [
+        CT.createAssetTransferOutput(seller.address, token, 10n * COIN, { assetMarker: marker }),
+        CT.createXnaOutput(seller.address, BigInt(fees.satoshis) - COVENANT_FEE),
+      ],
+    });
+    const result = signThroughPsbt(
+      rawTx,
+      [order, fees],
+      [{ index: 0, address: seller.address }, { index: 1, address: seller.address }],
+      [{ witnessScript: covenantHex }]
+    );
+    expect(result.allowed, `cancel reject: ${result.reason}`).toBe(true);
+    sendAndMine(result.hex);
+    expect(utxosOf(covenantAddress(covenantHex), token)).toEqual([]);
+    expect(cliJson("listassetbalancesbyaddress", seller.address)[token]).toBe(100);
+  }, 120_000);
 });

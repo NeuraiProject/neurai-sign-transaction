@@ -3,6 +3,7 @@ import Signer, { getScriptKind, type AddressKind } from "@neuraiproject/neurai-s
 import { SIGN_HASH_TYPES, type ISignOptions, type SignHashType } from "@neuraiproject/neurai-sign-transaction/browser";
 
 export const signFromDefault = Signer.sign;
+export const signPsbtFromDefault = Signer.signPsbt;
 export const kind: AddressKind = getScriptKind("5220" + "00".repeat(32));
 // @ts-expect-error getScriptKind is a named export, not a member of the default export
 export const notOnDefault = Signer.getScriptKind;

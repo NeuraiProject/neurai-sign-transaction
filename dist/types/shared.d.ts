@@ -93,11 +93,3 @@ export interface IUTXO {
     bareScriptHint?: BareScriptSigningHint;
 }
 export declare function sign(network: SupportedNetwork, rawTransactionHex: string, UTXOs: Array<IUTXO>, privateKeys: Record<string, PrivateKeyInput>, options?: ISignOptions): string;
-declare const Signer: {
-    sign: typeof sign;
-    SIGN_HASH_TYPES: Readonly<{
-        readonly ALL: 1;
-        readonly SINGLE_ANYONECANPAY: 131;
-    }>;
-};
-export default Signer;

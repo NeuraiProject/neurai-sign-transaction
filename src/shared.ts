@@ -1604,10 +1604,3 @@ export function sign(
 
   return tx.toHex();
 }
-
-const Signer = {
-  sign,
-  SIGN_HASH_TYPES,
-};
-
-export default Signer;

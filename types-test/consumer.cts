@@ -6,10 +6,12 @@ import st = require("@neuraiproject/neurai-sign-transaction");
 export const values = [
   st.VBYTES, st.default, st.estimateInputVbytes, st.estimateOutputBytes,
   st.estimateTransactionVbytes, st.estimateVirtualSize, st.getAddressKind, st.getScriptKind,
-  st.isPQAddress, st.isPQScript, st.sign,
+  st.isPQAddress, st.isPQScript, st.sign, st.signPsbt,
 ];
 // require() returns the exports object: `default` is the Signer object.
 export const signFromDefault: typeof st.sign = st.default.sign;
+export const signPsbtFromDefault: typeof st.signPsbt = st.default.signPsbt;
+export const psbtOptions: st.ISignPsbtOptions = { inputs: [{ index: 0, address: "tAddr" }], hashType: st.SIGN_HASH_TYPES.ALL };
 export const kind: st.AddressKind = st.getScriptKind("5320" + "00".repeat(32));
 export type Utxo = st.IUTXO;
 export const sponsorOptions: st.ISignOptions = {

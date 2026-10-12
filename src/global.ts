@@ -1,4 +1,5 @@
-import Signer, { sign } from "./shared";
+import Signer from "./signer";
+import { sign } from "./shared";
 
 declare global {
   interface Window {

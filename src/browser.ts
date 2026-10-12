@@ -1,4 +1,6 @@
 export { sign, SIGN_HASH_TYPES } from "./shared";
+export { signPsbt } from "./psbt";
+export type { ISignPsbtInput, ISignPsbtOptions } from "./psbt";
 export type {
   ISignDebugEvent,
   ISignOptions,
@@ -20,4 +22,4 @@ export {
   isPQAddress,
   isPQScript,
 } from "./estimate";
-export { default } from "./shared";
+export { default } from "./signer";

@@ -4,6 +4,16 @@ Signs a Neurai transaction.
 
 The purpose of this project is to enable signing XNA, asset and AuthScript inputs in pure JavaScript for every Neurai address type: classic P2PKH, generic AuthScript witness v1 with its three auth types (NoAuth, PQ and Legacy), strict PQ witness v2 and strict ECDSA witness v3.
 
+## 3.3.0: PSBT signing
+
+`signPsbt(network, psbt, privateKeys, { inputs, hashType?, inputHashTypes?, debug? })`
+signs inputs of a PSBT in the Neurai profile of
+`@neuraiproject/neurai-create-transaction` (`^0.9.3`, its "PSBT" section):
+BIP-174 version 0 whose transactions use the Neurai serialization, so the
+transaction to sign and every previous transaction may be version 3. It is an
+adapter over `sign`: the result is the same signature `sign` produces for the
+same transaction. See [Signing a PSBT](#signing-a-psbt-330).
+
 ## 3.2.0: input-0 bound partial-fill covenants
 
 Requires `@neuraiproject/neurai-scripts` `^0.10.0`, which fixes the
@@ -112,6 +122,46 @@ The `sign` method has four required arguments and one optional argument:
 5. optional signing options: `{ debug, hashType, inputHashTypes }`
 
 This library signs an already-built raw transaction. It does not build the raw transaction for you.
+
+### Signing a PSBT (3.3.0)
+
+```js
+import { signPsbt } from "@neuraiproject/neurai-sign-transaction";
+import { combinePsbts, finalizePsbt, extractPsbtTransaction } from "@neuraiproject/neurai-create-transaction";
+
+const signedPsbt = signPsbt("xna-test", psbtBase64, keys, {
+  debug: false,
+  inputs: [{ index: 1, address: "tAbc…" }, { index: 2, address: "tnq1r…" }],
+});
+const { hex } = extractPsbtTransaction(finalizePsbt(combinePsbts(psbtBase64, signedPsbt)));
+```
+
+- `inputs` lists the inputs to sign and the address whose key signs each one
+  (a key of `privateKeys`). That address must be the one the previous output
+  pays to; other inputs are left untouched.
+- Every input to sign needs its previous transaction in the PSBT
+  (`PSBT_IN_NON_WITNESS_UTXO`): script and amount come from it, and its txid
+  is checked against the outpoint. A `witnessUtxo` alone is refused.
+- P2PKH and strict ECDSA (witness v3) inputs get a `partialSig`, completed by
+  `finalizePsbt`. Inputs the signer completes itself get a
+  `finalScriptWitness`: strict PQ (witness v2), generic AuthScript v1, and a
+  partial-fill covenant's cancel branch.
+- **Covenant cancel**: an AuthScript v1 input whose `witnessScript` parses as
+  a partial-fill covenant (neurai-scripts) is signed through its cancel branch,
+  exactly as the `covenant-cancel-legacy` / `covenant-cancel-pq` hints: the
+  covenant must hash to the previous output's commitment and the key of
+  `address` (the seller's P2PKH or ECDSA v3 wallet address, or PQ address)
+  must be the covenant's cancel key. Fill branches need no signature and are
+  not signed through PSBTs.
+- **Sighash**: an input's `sighashType` is honoured; `hashType` /
+  `inputHashTypes` apply only to inputs without one, and an option that
+  contradicts the PSBT is an error, as is an `inputHashTypes` index that is not
+  being signed. Supported modes are those of `sign`: `0x01`, and `0x83` for
+  P2PKH, strict PQ v2 and strict ECDSA v3.
+- Already finalized inputs, missing keys and PSBTs whose previous
+  transactions do not match their outpoints are rejected.
+
+The default export and the global bundle expose `signPsbt` too.
 
 ### Opt-in sponsor signatures (3.1.0)
 
