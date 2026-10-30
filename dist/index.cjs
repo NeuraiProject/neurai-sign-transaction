@@ -17590,7 +17590,9 @@ function getAuthScriptSpendTemplate(address, privateKeyEntry) {
     const witnessScript = privateKeyEntry.witnessScript
         ? bufferFromHex(privateKeyEntry.witnessScript, `AuthScript witnessScript for address ${address}`)
         : DEFAULT_PQ_WITNESS_SCRIPT;
-    const functionalArgs = (privateKeyEntry.functionalArgs ?? []).map((arg, idx) => bufferFromHex(arg, `AuthScript functionalArgs[${idx}] for address ${address}`));
+    // "" is a valid stack element: the minimal encoding of 0 and of false
+    // (NIP-054 custody arguments, the false branch of an OP_IF).
+    const functionalArgs = (privateKeyEntry.functionalArgs ?? []).map((arg, idx) => bufferFromHexAllowEmpty(arg, `AuthScript functionalArgs[${idx}] for address ${address}`));
     return {
         authType,
         witnessScript,

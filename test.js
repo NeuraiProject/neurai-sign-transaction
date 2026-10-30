@@ -456,6 +456,65 @@ test("Verify NoAuth (authType=0x00) signing with covenant witnessScript and func
   expect(witness[2].toString("hex")).toBe(NOAUTH_COVENANT.witnessScript);
 });
 
+test("Verify NoAuth functionalArgs keep empty elements (0 / false, NIP-054 custody args)", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("56".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
+
+  const signedHex = Signer.sign(
+    "xna-pq-test",
+    tx.toHex(),
+    [
+      {
+        address: "covenant-output",
+        assetName: "XNA",
+        txid: "56".repeat(32),
+        outputIndex: 0,
+        script: NOAUTH_COVENANT.script,
+        satoshis: 100000,
+        value: 100000,
+      },
+    ],
+    {
+      "covenant-output": {
+        authType: 0,
+        witnessScript: NOAUTH_COVENANT.witnessScript,
+        functionalArgs: ["", "01", "", "e803"],
+      },
+    },
+    { debug: false }
+  );
+
+  const witness = decodeTestTransaction(signedHex).ins[0].witness.map((item) => item.toString("hex"));
+  expect(witness).toEqual(["00", "", "01", "", "e803", NOAUTH_COVENANT.witnessScript]);
+});
+
+test("Verify NoAuth functionalArgs still reject non-hex elements", () => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from("57".repeat(32), "hex").reverse(), 0);
+  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 90000n);
+  const utxo = {
+    address: "covenant-output",
+    assetName: "XNA",
+    txid: "57".repeat(32),
+    outputIndex: 0,
+    script: NOAUTH_COVENANT.script,
+    satoshis: 100000,
+    value: 100000,
+  };
+  const keys = (arg) => ({
+    "covenant-output": { authType: 0, witnessScript: NOAUTH_COVENANT.witnessScript, functionalArgs: [arg] },
+  });
+  expect(() => Signer.sign("xna-pq-test", tx.toHex(), [utxo], keys("zz"), { debug: false })).toThrow(
+    /functionalArgs\[0\].*must be a hex string/
+  );
+  expect(() => Signer.sign("xna-pq-test", tx.toHex(), [utxo], keys("abc"), { debug: false })).toThrow(
+    /functionalArgs\[0\].*must be a hex string/
+  );
+});
+
 test("Verify Legacy AuthScript (authType=0x02) signing with OP_TRUE", () => {
   const tx = new bitcoin.Transaction();
   tx.version = 2;

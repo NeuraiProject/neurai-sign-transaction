@@ -698,4 +698,57 @@ describe.skipIf(MODE === "skip")("every address type, signed by this library, ac
     expect(utxosOf(covenantAddress(covenantHex), token)).toEqual([]);
     expect(cliJson("listassetbalancesbyaddress", seller.address)[token]).toBe(100);
   }, 120_000);
+
+  // ─── P2AH custody (NIP-054 OP_CHECKASSETAUTH, active from block 0 on regtest) ──
+  // The policy as neurai-scripts' buildAssetAuthPolicyScript builds it:
+  // <1> <M> <G> <role_1> ... <role_n> <n> OP_CHECKASSETAUTH, roles sorted by bytes.
+  function assetAuthPolicyHex(M, G, roles) {
+    const small = (n) => (0x50 + n).toString(16);
+    const pushes = [...roles].sort().map((r) => Buffer.from(r, "ascii")).map((b) => b.length.toString(16).padStart(2, "0") + b.toString("hex"));
+    return small(1) + small(M) + small(G) + pushes.join("") + small(roles.length) + "df";
+  }
+
+  it("spends a P2AH custody approved by an owner token, every input signed by this library", () => {
+    const holder = WALLETS.legacy;
+    cli("issue", "P2AHROLE", 1, holder.address);
+    cli("issue", "P2AHGOLD", 100);
+    cli("generate", 1);
+    const policyHex = assetAuthPolicyHex(1, 2, ["P2AHROLE!", "P2AHSPARE!"]);
+    const custody = covenantAddress(policyHex);
+    cli("transfer", "P2AHGOLD", 10, custody);
+    cli("generate", 1);
+
+    const marker = assetMarker();
+    const gold = assetUtxo(custody, "P2AHGOLD", 10n * COIN);
+    const role = assetUtxo(holder.address, "P2AHROLE!", COIN);
+    const fees = xnaUtxoAtLeast(holder.address, COVENANT_FEE);
+    // Synchronous spend: c, a, b and T are all 0, the empty element.
+    const keys = { ...PRIVATE_KEYS, [custody]: { authType: 0, witnessScript: policyHex, functionalArgs: ["", "", "", ""] } };
+    const spend = (inputs, options) => {
+      const outputs = [CT.createAssetTransferOutput(holder.address, "P2AHGOLD", 10n * COIN, { assetMarker: marker })];
+      if (inputs.includes(role)) {
+        outputs.push(CT.createAssetTransferOutput(holder.address, "P2AHROLE!", COIN, { assetMarker: marker }));
+      }
+      outputs.push(CT.createXnaOutput(holder.address, BigInt(fees.satoshis) - COVENANT_FEE));
+      const rawTx = CT.createUnsignedTransaction({ inputs: inputs.map((u) => ({ txid: u.txid, vout: u.outputIndex })), outputs });
+      const hex = Signer.sign("xna-test", rawTx, inputs, keys, { debug: false, ...options });
+      const [result] = cliJson("testmempoolaccept", JSON.stringify([hex]), "true");
+      return { allowed: Boolean(result.allowed), reason: result["reject-reason"], hex };
+    };
+
+    const withoutRole = spend([gold, fees]);
+    expect(withoutRole.allowed).toBe(false);
+    expect(withoutRole.reason).toMatch(/not enough roles approve/);
+
+    const notAll = spend([gold, role, fees], { inputHashTypes: { 1: Signer.SIGN_HASH_TYPES.SINGLE_ANYONECANPAY } });
+    expect(notAll.allowed).toBe(false);
+    expect(notAll.reason).toMatch(/does not use SIGHASH_ALL/);
+
+    const approved = spend([gold, role, fees]);
+    expect(approved.allowed, `custody reject: ${approved.reason}`).toBe(true);
+    expect(cliJson("decoderawtransaction", approved.hex).vin[0].txinwitness).toEqual(["00", "", "", "", "", policyHex]);
+    sendAndMine(approved.hex);
+    expect(utxosOf(custody, "P2AHGOLD")).toEqual([]);
+    expect(cliJson("listassetbalancesbyaddress", holder.address)["P2AHGOLD"]).toBe(10);
+  }, 120_000);
 });

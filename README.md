@@ -225,6 +225,14 @@ No key material is required. The witness contains only the auth type byte, any `
 { authType: 0, witnessScript: "527551", functionalArgs: ["deadbeef"] }
 ```
 
+Each `functionalArgs` item is one stack element in hex; `""` is the empty element, the minimal encoding of 0 and of false. A synchronous P2AH custody spend (NIP-054 `OP_CHECKASSETAUTH`, policy script from `buildAssetAuthPolicyScript` in neurai-scripts) passes `c a b T` all 0:
+
+```js
+{ authType: 0, witnessScript: policyHex, functionalArgs: ["", "", "", ""] }
+```
+
+The owner tokens that approve it are inputs of the same transaction, signed with `SIGHASH_ALL` (the default): the node rejects another hash type on an approval with `SCRIPT_ERR_ASSETAUTH_SIGHASH`.
+
 ### PQ (`authType: 0x01`) — default
 
 Provide PQ key material in any of these forms:
