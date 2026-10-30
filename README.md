@@ -4,6 +4,22 @@ Signs a Neurai transaction.
 
 The purpose of this project is to enable signing XNA, asset and AuthScript inputs in pure JavaScript for every Neurai address type: classic P2PKH, generic AuthScript witness v1 with its three auth types (NoAuth, PQ and Legacy), strict PQ witness v2 and strict ECDSA witness v3.
 
+## 3.4.0: no-RBF sequence rule
+
+Neurai removed transaction replacement: from `nNoRbfHeight` (block 10 of the
+reset testnet, 0 on regtest, not scheduled on mainnet) an input whose sequence
+only signals BIP 125 replaceability makes the transaction invalid
+(`bad-txns-rbf-sequence`). On the testnet labels `sign` throws for those
+sequences instead of producing a transaction the node rejects; see
+[No-RBF sequence rule](#no-rbf-sequence-rule). This replaces the NIP-025 check
+on asset AuthScript inputs, which the node had already dropped, so those inputs
+may use a BIP 68 relative lock (CSV) again.
+
+- NoAuth `functionalArgs` accept `""`, the empty stack element (0 or false),
+  which a NIP-054 P2AH custody (`OP_CHECKASSETAUTH`) needs; see
+  [NoAuth](#noauth-authtype-0x00).
+- Requires `@neuraiproject/neurai-scripts` `^0.11.0`.
+
 ## 3.3.1: React Native (Hermes)
 
 Byte comparisons (covenant and AuthScript commitments, the cancel key, the asset
