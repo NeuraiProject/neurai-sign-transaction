@@ -261,10 +261,14 @@ The node fixes the whole spend template, so there is nothing to configure:
 
 An entry may repeat the fixed values (`authType` 1 / 2, `witnessScript: "51"`), but any other `authType`, another `witnessScript` or `functionalArgs` throw instead of being ignored. Covenant `bareScriptHint`s only apply to generic v1 prevouts.
 
+## No-RBF sequence rule
+
+On the testnet labels (`xna-test`, `xna-legacy-test`, `xna-pq-test`, `xna-authscript-test`, also used for regtest) `sign` throws when an input uses a sequence the node rejects with `bad-txns-rbf-sequence`: every input must be `0xffffffff`, `0xfffffffe` or, in a transaction of version 2 or higher, a BIP 68 relative lock (bit 31 clear). Mainnet labels do not apply the rule until the unified mainnet fork schedules it.
+
 ## AuthScript rules
 
 - the prevout starts with `OP_1`, `OP_2` or `OP_3` followed by the 32-byte commitment
-- assets may append the usual asset suffix after the 34-byte AuthScript prefix (the NIP-025 non-RBF rule only covers `OP_1` asset outputs, like in the node)
+- assets may append the usual asset suffix after the 34-byte AuthScript prefix
 - generic v1 sighash uses Neurai `SIGVERSION_AUTHSCRIPT`: BIP143-style, then `auth_type_byte` before the hash type
 - strict v2 / v3 sighash uses `SIGVERSION_AUTHSCRIPT_STRICT`: the same, with the witness version byte between `nLockTime` and `auth_type_byte`. A v1-style signature is rejected on a strict input
 - generic v1: default `witnessScript` is `OP_TRUE`; custom templates can be provided via `witnessScript` and `functionalArgs`. Strict v2 / v3: always `OP_TRUE`, no arguments

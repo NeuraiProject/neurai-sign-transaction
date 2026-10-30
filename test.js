@@ -1859,12 +1859,12 @@ test("estimateVirtualSize accounts for covenant hints (fill and cancel-PQ)", () 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// NIP-025 anti-RBF for asset AuthScript inputs (v2.2.0 — plan fase 4)
+// No-RBF sequence rule (consensus on testnet/regtest; replaces NIP-025)
 // ═══════════════════════════════════════════════════════════════════════════
 
 // NOAUTH_SIMPLE.script is the AuthScript-v1 commitment for the default
 // OP_TRUE NoAuth witness script — signable with just { authType: 0 }.
-function nip025AssetPayloadHex(typeMarker, magic = "rvn") {
+function assetPayloadHex(typeMarker, magic = "xna") {
   const name = Buffer.from("TREST", "ascii");
   const amt = Buffer.alloc(8);
   amt.writeBigUInt64LE(10000000000n, 0);
@@ -1877,150 +1877,98 @@ function nip025AssetPayloadHex(typeMarker, magic = "rvn") {
   ]).toString("hex");
 }
 
-function nip025AssetScriptHex(typeMarker, magic = "rvn") {
-  return appendAssetWrapper(NOAUTH_SIMPLE.script, nip025AssetPayloadHex(typeMarker, magic));
+function noRbfAssetScriptHex(typeMarker, magic = "xna") {
+  return appendAssetWrapper(NOAUTH_SIMPLE.script, assetPayloadHex(typeMarker, magic));
 }
 
-function buildNip025Tx(sequence) {
+function buildSequenceTx(version, sequences) {
   const tx = new bitcoin.Transaction();
-  tx.version = 2;
-  tx.addInput(Buffer.from("aa".repeat(32), "hex").reverse(), 0, sequence);
+  tx.version = version;
+  sequences.forEach((sequence, index) => {
+    tx.addInput(Buffer.from("aa".repeat(32), "hex").reverse(), index, sequence);
+  });
   tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 0n);
   return tx;
 }
 
-function nip025Utxo(scriptHex) {
-  return {
-    address: "noauth-asset-vault",
-    assetName: "TREST",
+function sequenceUtxos(count, scriptHex = NOAUTH_SIMPLE.script) {
+  return Array.from({ length: count }, (_, index) => ({
+    address: "noauth-vault",
+    assetName: "XNA",
     txid: "aa".repeat(32),
-    outputIndex: 0,
+    outputIndex: index,
     script: scriptHex,
     satoshis: 0,
     value: 0,
-  };
+  }));
 }
 
-const NIP025_KEYS = { "noauth-asset-vault": { authType: 0 } };
+const NO_RBF_KEYS = { "noauth-vault": { authType: 0 } };
+const TESTNET_LABELS = ["xna-test", "xna-legacy-test", "xna-pq-test", "xna-authscript-test"];
 
-// NIP-040: both the legacy "rvn" and the post-activation "xna" markers must
-// trigger the guard — 8-case matrix (marker magic × type).
-const NIP025_MARKERS = [];
-for (const magic of ["rvn", "xna"]) {
-  for (const [type, typeMarker] of [
-    ["t/transfer", 0x74],
-    ["q/new", 0x71],
-    ["o/owner", 0x6f],
-    ["r/reissue", 0x72],
-  ]) {
-    NIP025_MARKERS.push([`${magic} ${type}`, magic, typeMarker]);
-  }
+function signSequences(network, version, sequences, scriptHex) {
+  const tx = buildSequenceTx(version, sequences);
+  return Signer.sign(network, tx.toHex(), sequenceUtxos(sequences.length, scriptHex), NO_RBF_KEYS);
 }
 
-for (const [label, magic, marker] of NIP025_MARKERS) {
-  test(`NIP-025 — ${label} asset AuthScript rejects a low-sequence input`, () => {
-    const tx = buildNip025Tx(0xfffffffd);
-    expect(() =>
-      Signer.sign(
-        "xna-pq-test",
-        tx.toHex(),
-        [nip025Utxo(nip025AssetScriptHex(marker, magic))],
-        NIP025_KEYS
-      )
-    ).toThrow(/NIP-025/);
+for (const network of TESTNET_LABELS) {
+  test(`no-RBF — ${network} rejects a replaceability signal`, () => {
+    expect(() => signSequences(network, 2, [0xfffffffd])).toThrow(/No-RBF sequence rule.*bad-txns-rbf-sequence/);
   });
+}
 
-  test(`NIP-025 — ${label} asset AuthScript signs when every input opts out of RBF`, () => {
-    const tx = buildNip025Tx(0xfffffffe);
-    const signedHex = Signer.sign(
-      "xna-pq-test",
-      tx.toHex(),
-      [nip025Utxo(nip025AssetScriptHex(marker, magic))],
-      NIP025_KEYS
+for (const [version, sequence] of [
+  [2, 0xfffffffd],
+  [2, 0x80000000],
+  [2, 0xfffffff0],
+  [1, 0],
+  [1, 1],
+  [1, 0x0000ffff],
+]) {
+  test(`no-RBF — version ${version} sequence 0x${sequence.toString(16)} is rejected`, () => {
+    expect(() => signSequences("xna-pq-test", version, [sequence])).toThrow(
+      new RegExp(`#0 \\(0x${sequence.toString(16)}\\)`)
     );
-    const witness = decodeTestTransaction(signedHex).ins[0].witness;
-    expect(witness).toHaveLength(2);
-    expect(witness[0].equals(Buffer.from([0x00]))).toBe(true);
   });
 }
 
-test("NIP-025 — a bare AuthScript prevout does NOT trigger the rule", () => {
-  const tx = buildNip025Tx(0); // aggressively RBF-able sequence
-  const signedHex = Signer.sign(
-    "xna-pq-test",
-    tx.toHex(),
-    [nip025Utxo(NOAUTH_SIMPLE.script)],
-    NIP025_KEYS
-  );
-  const witness = decodeTestTransaction(signedHex).ins[0].witness;
-  expect(witness).toHaveLength(2);
-});
-
-const NIP025_MALFORMED = [
-  ["payload without rvn/xna magic", appendAssetWrapper(NOAUTH_SIMPLE.script, "78787874" + "02beef")],
-  ["near-miss xnn magic", appendAssetWrapper(NOAUTH_SIMPLE.script, "786e6e74" + "02beef")],
-  ["unknown type marker", nip025AssetScriptHex(0x7a)],
-  ["unknown type marker with xna magic", nip025AssetScriptHex(0x7a, "xna")],
-  ["missing final OP_DROP", nip025AssetScriptHex(0x74).slice(0, -2)],
-  ["truncated pushdata", NOAUTH_SIMPLE.script + "c0" + "4c50"],
-];
-
-for (const [label, scriptHex] of NIP025_MALFORMED) {
-  test(`NIP-025 — malformed wrapper (${label}) does not trigger the rule`, () => {
-    const tx = buildNip025Tx(0xfffffffd);
-    const signedHex = Signer.sign("xna-pq-test", tx.toHex(), [nip025Utxo(scriptHex)], NIP025_KEYS);
-    const witness = decodeTestTransaction(signedHex).ins[0].witness;
+for (const [version, sequence] of [
+  [2, 0xffffffff],
+  [2, 0xfffffffe],
+  [2, 0],
+  [2, 1],
+  [2, 0x00400005],
+  [2, 0x7fffffff],
+  [1, 0xffffffff],
+  [1, 0xfffffffe],
+]) {
+  test(`no-RBF — version ${version} sequence 0x${sequence.toString(16)} signs`, () => {
+    const witness = decodeTestTransaction(signSequences("xna-pq-test", version, [sequence])).ins[0].witness;
     expect(witness).toHaveLength(2);
   });
 }
 
-test("NIP-025 — a low sequence on a sibling legacy input is also rejected", () => {
-  const tx = new bitcoin.Transaction();
-  tx.version = 2;
-  tx.addInput(Buffer.from("aa".repeat(32), "hex").reverse(), 0, 0xffffffff);
-  tx.addInput(Buffer.from("bb".repeat(32), "hex").reverse(), 0, 0xfffffffd);
-  tx.addOutput(Buffer.from("76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac", "hex"), 0n);
-
-  const utxos = [
-    nip025Utxo(nip025AssetScriptHex(0x74)),
-    {
-      address: "mgRYHdMqD1gwm9QQqBRUPcDKdEZ9oVeChA",
-      assetName: "XNA",
-      txid: "bb".repeat(32),
-      outputIndex: 0,
-      script: "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac",
-      satoshis: 100000,
-      value: 100000,
-    },
-  ];
-
-  expect(() => Signer.sign("xna-pq-test", tx.toHex(), utxos, NIP025_KEYS)).toThrow(/NIP-025/);
+test("no-RBF — only the offending inputs are reported", () => {
+  expect(() => signSequences("xna-test", 2, [0xffffffff, 0xfffffffd, 1, 0x80000001])).toThrow(
+    /Offending inputs: #1 \(0xfffffffd\), #3 \(0x80000001\)$/
+  );
 });
 
-test("NIP-025 — rule is inactive on mainnet networks", () => {
-  const tx = buildNip025Tx(0xfffffffd);
-  const signedHex = Signer.sign(
-    "xna-pq",
-    tx.toHex(),
-    [nip025Utxo(nip025AssetScriptHex(0x74))],
-    NIP025_KEYS
-  );
-  const witness = decodeTestTransaction(signedHex).ins[0].witness;
-  expect(witness).toHaveLength(2);
+test("no-RBF — an asset AuthScript input may use a relative lock (CSV)", () => {
+  // The former NIP-025 client check demanded >= 0xfffffffe here, which
+  // blocked CSV covenants; the node dropped that rule in NIP-025 patch 1.
+  for (const magic of ["rvn", "xna"]) {
+    const signedHex = signSequences("xna-pq-test", 2, [1], noRbfAssetScriptHex(0x74, magic));
+    expect(decodeTestTransaction(signedHex).ins[0].witness).toHaveLength(2);
+  }
+  expect(() => signSequences("xna-pq-test", 2, [0xfffffffd], noRbfAssetScriptHex(0x74))).toThrow(/bad-txns-rbf-sequence/);
 });
 
-test("NIP-025 — rule stays inactive on mainnet for xna-marked UTXOs too", () => {
-  // NIP-040 must not change the per-network activation: an xna-marked asset
-  // AuthScript UTXO on a mainnet network still signs with an RBF sequence.
-  const tx = buildNip025Tx(0xfffffffd);
-  const signedHex = Signer.sign(
-    "xna-pq",
-    tx.toHex(),
-    [nip025Utxo(nip025AssetScriptHex(0x74, "xna"))],
-    NIP025_KEYS
-  );
-  const witness = decodeTestTransaction(signedHex).ins[0].witness;
-  expect(witness).toHaveLength(2);
+test("no-RBF — the rule is not scheduled on mainnet networks", () => {
+  for (const network of ["xna", "xna-pq"]) {
+    const signedHex = signSequences(network, 2, [0xfffffffd]);
+    expect(decodeTestTransaction(signedHex).ins[0].witness).toHaveLength(2);
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2031,7 +1979,7 @@ test("NIP-040 — legacy P2PKH input wrapped with xna signs and verifies", () =>
   const wif = "cVP9mzcDqMzWDhekiKMWKqEy739Cp6rKDT4tbG4wXXVfopMfTiBW";
   const keyPair = ECPairCancel.fromWIF(wif, XNA_TESTNET);
   const p2pkh = "76a91409f2017224efdaf3633d26b1cf11a1df418496f688ac";
-  const wrappedScript = appendAssetWrapper(p2pkh, nip025AssetPayloadHex(0x74, "xna"));
+  const wrappedScript = appendAssetWrapper(p2pkh, assetPayloadHex(0x74, "xna"));
 
   const tx = new bitcoin.Transaction();
   tx.version = 2;
@@ -2198,16 +2146,15 @@ test("v3 — OP_TXHASH commits to vrefin only when bit 8 is set", () => {
   );
 });
 
-test("v3 — NIP-025 also applies to v3 transactions", () => {
-  const raw = buildUnsignedHex(
-    3,
-    [{ txid: "aa".repeat(32), vout: 0, sequence: 0xfffffffd }],
-    V3_PAYOUT,
-    [V3_REF_A]
+test("v3 — the no-RBF sequence rule also applies to v3 transactions", () => {
+  const sign = (sequence) => Signer.sign(
+    "xna-pq-test",
+    buildUnsignedHex(3, [{ txid: "aa".repeat(32), vout: 0, sequence }], V3_PAYOUT, [V3_REF_A]),
+    sequenceUtxos(1, noRbfAssetScriptHex(0x74)),
+    NO_RBF_KEYS
   );
-  expect(() =>
-    Signer.sign("xna-pq-test", raw, [nip025Utxo(nip025AssetScriptHex(0x74))], NIP025_KEYS)
-  ).toThrow(/NIP-025/);
+  expect(() => sign(0xfffffffd)).toThrow(/bad-txns-rbf-sequence/);
+  expect(() => sign(1)).not.toThrow(); // a relative lock in a v3 transaction
 });
 
 test("v3 — estimateVirtualSize accounts for vrefin", () => {

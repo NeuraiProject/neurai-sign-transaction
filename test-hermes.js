@@ -99,7 +99,7 @@ describe("signing under Hermes semantics (subarray returns a plain Uint8Array)",
   it.each([
     ["ECDSA", () => legacyOrder, () => W.legacy, "covenant-cancel-legacy"],
     ["PQ", () => pqOrder, () => W.pq, "covenant-cancel-pq"],
-  ])("cancels an order with its %s key as under Node (asset AuthScript input, NIP-025 check)", (_, order, seller, kind) => {
+  ])("cancels an order with its %s key as under Node (asset AuthScript input, no-RBF sequence rule)", (_, order, seller, kind) => {
     const prev = previousTx([
       CT.createAssetTransferOutput(covenantAddress(order()), "HERMES", 7n * COIN, MARKER),
       { valueSats: 2n * COIN, scriptPubKeyHex: scriptOf(seller().address) },

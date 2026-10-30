@@ -6,7 +6,7 @@ declare const SIGN_HASH_TYPES: Readonly<{
 type SignHashType = (typeof SIGN_HASH_TYPES)[keyof typeof SIGN_HASH_TYPES];
 /**
  * neurai-key 5 network labels. The signer only needs the chain (for the WIF
- * version byte and the per-network NIP-025 rule): every mainnet label signs
+ * version byte and the per-network no-RBF sequence rule): every mainnet label signs
  * with the mainnet WIF, every `-test` label with the testnet/regtest WIF.
  * The address type of each input comes from its prevout scriptPubKey, never
  * from the label.

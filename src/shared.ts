@@ -58,7 +58,7 @@ const ZERO_32 = Buffer.alloc(32, 0);
 
 /**
  * neurai-key 5 network labels. The signer only needs the chain (for the WIF
- * version byte and the per-network NIP-025 rule): every mainnet label signs
+ * version byte and the per-network no-RBF sequence rule): every mainnet label signs
  * with the mainnet WIF, every `-test` label with the testnet/regtest WIF.
  * The address type of each input comes from its prevout scriptPubKey, never
  * from the label.
@@ -254,93 +254,24 @@ function getAuthScriptWitnessVersion(script: Buffer): number | null {
     : null;
 }
 
-/** Generic AuthScript v1 prefix (`OP_1 0x20 <32B>`). */
-function isAuthScriptV1Script(script: Buffer): boolean {
-  return getAuthScriptWitnessVersion(script) === AUTHSCRIPT_WITNESS_V1;
-}
-
-// NIP-025: asset payload marker + type. NIP-040 renames the marker from the
-// Ravencoin-inherited "rvn" to "xna" (active on testnet/regtest; mainnet
-// still emits "rvn"), so detection must accept both — a UTXO with either
-// marker is an asset AuthScript the anti-RBF rule protects.
-const ASSET_PAYLOAD_MARKERS = [
-  Buffer.from("rvn", "ascii"),
-  Buffer.from("xna", "ascii"),
-] as const;
-
-function hasAssetMarker(payload: Buffer): boolean {
-  return ASSET_PAYLOAD_MARKERS.some((marker) => sameBytes(payload.subarray(0, 3), marker));
-}
-
-// 't' transfer, 'q' new, 'o' owner, 'r' reissue (assets.h:19-23).
-const XNA_ASSET_TYPE_MARKERS = new Set([0x74, 0x71, 0x6f, 0x72]);
+// No-RBF sequence rule, consensus in the node from
+// Consensus::Params::nNoRbfHeight: block 10 of the reset testnet, 0 on
+// regtest, not scheduled on mainnet. Regtest shares the testnet networks here.
+// Add the mainnet labels when the unified mainnet fork schedules the rule.
+const NETWORKS_WITH_NO_RBF_SEQUENCE_RULE: ReadonlySet<SupportedNetwork> =
+  new Set(["xna-test", "xna-legacy-test", "xna-pq-test", "xna-authscript-test"]);
+const SEQUENCE_LOCKTIME_DISABLE_FLAG = 0x80000000;
 
 /**
- * Mirror of the node's `IsAssetAuthScript()` predicate (strict AuthScript
- * asset parser, script.cpp:333-339): generic AuthScript-v1 prefix (34 B,
- * `OP_1` only — the node's NIP-025 predicate does not cover the strict
- * `OP_2` / `OP_3` families), then
- * `OP_XNA_ASSET` exactly at offset 34, then ONE pushdata element decoded
- * with Script push semantics (direct push / OP_PUSHDATA1/2/4, lengths
- * validated) whose payload starts with "rvn" or "xna" (NIP-040) + a valid
- * type marker, then a final OP_DROP as the script's last byte.
- *
- * Deliberately NOT a generic byte search: a 0xc0 inside push data must not
- * count as a wrapper.
+ * Mirror of the node's `CTxIn::IsNoRbfSequenceAllowed`: 0xffffffff and
+ * 0xfffffffe are always allowed; a lower value only as a BIP 68 relative lock
+ * (disable flag clear in a transaction of version 2 or higher, compared as
+ * unsigned like the node). Anything else only signals BIP 125 replaceability.
  */
-function isAssetAuthScript(scriptPubKey: Buffer): boolean {
-  if (!isAuthScriptV1Script(scriptPubKey)) return false;
-
-  let offset = AUTHSCRIPT_PREFIX_LENGTH;
-  if (scriptPubKey.length <= offset || scriptPubKey[offset] !== OP_XNA_ASSET) {
-    return false;
-  }
-  offset += 1;
-
-  if (offset >= scriptPubKey.length) return false;
-  const op = scriptPubKey[offset];
-  offset += 1;
-
-  let payloadLength: number;
-  if (op > 0 && op < bitcoin.opcodes.OP_PUSHDATA1) {
-    payloadLength = op;
-  } else if (op === bitcoin.opcodes.OP_PUSHDATA1) {
-    if (offset + 1 > scriptPubKey.length) return false;
-    payloadLength = scriptPubKey[offset];
-    offset += 1;
-  } else if (op === bitcoin.opcodes.OP_PUSHDATA2) {
-    if (offset + 2 > scriptPubKey.length) return false;
-    payloadLength = scriptPubKey.readUInt16LE(offset);
-    offset += 2;
-  } else if (op === bitcoin.opcodes.OP_PUSHDATA4) {
-    if (offset + 4 > scriptPubKey.length) return false;
-    payloadLength = scriptPubKey.readUInt32LE(offset);
-    offset += 4;
-  } else {
-    return false;
-  }
-
-  if (offset + payloadLength > scriptPubKey.length) return false;
-  const payload = scriptPubKey.subarray(offset, offset + payloadLength);
-  offset += payloadLength;
-
-  if (payload.length < 4) return false;
-  if (!hasAssetMarker(payload)) return false;
-  if (!XNA_ASSET_TYPE_MARKERS.has(payload[3])) return false;
-
-  return (
-    offset === scriptPubKey.length - 1 &&
-    scriptPubKey[offset] === bitcoin.opcodes.OP_DROP
-  );
+function isNoRbfSequenceAllowed(version: number, sequence: number): boolean {
+  if (sequence >>> 0 >= 0xfffffffe) return true;
+  return version >>> 0 >= 2 && (sequence & SEQUENCE_LOCKTIME_DISABLE_FLAG) === 0;
 }
-
-// NIP-025 (`nASSETRBFBlockEnabled`) is a hard-coded per-network opt-in in
-// the node: true on testnet/regtest, false on mainnet
-// (chainparams.cpp:135,351,568). Regtest shares the testnet networks here.
-// Revisit this set when a mainnet fork activates the rule.
-const NETWORKS_WITH_ASSET_AUTHSCRIPT_RBF_BLOCK: ReadonlySet<SupportedNetwork> =
-  new Set(["xna-test", "xna-legacy-test", "xna-pq-test", "xna-authscript-test"]);
-const MIN_NON_RBF_SEQUENCE = 0xfffffffe;
 
 function getAuthScriptProgram(scriptPubKey: Buffer): Buffer {
   if (getAuthScriptWitnessVersion(scriptPubKey) === null) {
@@ -1043,38 +974,23 @@ export function sign(
     tx.addOutput(bufferFromHex(out.scriptPubKeyHex, "output script"), value);
   }
 
-  // NIP-025: on networks where nASSETRBFBlockEnabled is active, a tx that
-  // spends any asset-AuthScript UTXO must have EVERY input opted out of
-  // RBF, or the node rejects it whole with
-  // bad-txns-asset-authscript-input-rbf (tx_verify.cpp:770-796). Failing
-  // here beats producing a signed tx the node is guaranteed to reject.
-  if (NETWORKS_WITH_ASSET_AUTHSCRIPT_RBF_BLOCK.has(network)) {
-    const triggering = tx.ins.find((input) => {
-      const { txid, vout } = getInputReference(input);
-      const inputUtxo = getUTXO(txid, vout);
-      if (
-        !inputUtxo ||
-        typeof inputUtxo.script !== "string" ||
-        inputUtxo.script.length === 0
-      ) {
-        return false;
-      }
-      return isAssetAuthScript(Buffer.from(inputUtxo.script, "hex"));
-    });
-    if (triggering) {
-      const offending = tx.ins
-        .map((input, idx) => ({ idx, sequence: input.sequence }))
-        .filter(({ sequence }) => sequence < MIN_NON_RBF_SEQUENCE);
-      if (offending.length > 0) {
-        const { txid, vout } = getInputReference(triggering);
-        throw new Error(
-          `NIP-025: input ${txid}:${vout} spends an asset AuthScript UTXO, so every input must have nSequence >= 0x${MIN_NON_RBF_SEQUENCE.toString(16)} ` +
-            `(the node rejects the whole tx with bad-txns-asset-authscript-input-rbf). Offending inputs: ` +
-            offending
-              .map((o) => `#${o.idx} (0x${o.sequence.toString(16)})`)
-              .join(", ")
-        );
-      }
+  // No-RBF sequence rule: where the node enforces it, a sequence that only
+  // signals BIP 125 replaceability makes the whole tx invalid
+  // (bad-txns-rbf-sequence). Failing here beats producing a signed tx the
+  // node is guaranteed to reject.
+  if (NETWORKS_WITH_NO_RBF_SEQUENCE_RULE.has(network)) {
+    const offending = tx.ins
+      .map((input, idx) => ({ idx, sequence: input.sequence >>> 0 }))
+      .filter(({ sequence }) => !isNoRbfSequenceAllowed(tx.version, sequence));
+    if (offending.length > 0) {
+      throw new Error(
+        "No-RBF sequence rule: a sequence below 0xfffffffe must be a BIP 68 relative lock " +
+          "(transaction version 2 or higher, bit 31 clear); the node rejects the whole tx " +
+          "with bad-txns-rbf-sequence. Offending inputs: " +
+          offending
+            .map((o) => `#${o.idx} (0x${o.sequence.toString(16)})`)
+            .join(", ")
+      );
     }
   }
 
