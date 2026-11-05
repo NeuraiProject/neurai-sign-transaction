@@ -621,9 +621,9 @@ function getAuthScriptCommitment(
 /**
  * NIP-014 (tx v3) reference-input data, precomputed once per sign() call.
  * `concat` is the raw concatenation of 36-byte serialized outpoints
- * (txid LE ‖ vout u32LE) — possibly EMPTY, which still contributes
- * `hash256("")` to the v3 sighash (the node inserts hashRefInputs for every
- * v3 tx, `interpreter.cpp:2702-2711`). Null means the tx is not v3.
+ * (txid LE ‖ vout u32LE) — possibly EMPTY: OP_TXHASH bit 8 hashes it for
+ * every v3 tx. Null means the tx is not v3. Signature hashes commit to
+ * reference inputs only when there are some (`getSighashRefInputs`).
  */
 interface IRefInputsData {
   count: number;
@@ -650,10 +650,20 @@ function getRefInputsData(decoded: DecodedTransaction): IRefInputsData | null {
 }
 
 /**
- * Legacy (SIGVERSION_BASE) sighash for a v3 transaction. bitcoinjs'
- * `hashForSignature` cannot produce it: the node's
+ * The reference inputs the signature hashes commit to. The node's legacy
+ * serializer and BIP-143/AuthScript preimage include them only when the
+ * transaction has some; without them a v3 transaction signs exactly as in
+ * 1.0.7 (`interpreter.cpp`, `!txTo.vrefin.empty()`).
+ */
+function getSighashRefInputs(refInputs: IRefInputsData | null): IRefInputsData | null {
+  return refInputs && refInputs.count > 0 ? refInputs : null;
+}
+
+/**
+ * Legacy (SIGVERSION_BASE) sighash for a transaction with reference inputs.
+ * bitcoinjs' `hashForSignature` cannot produce it: the node's
  * `CTransactionSignatureSerializer` serializes `CompactSize(vrefin.length)`
- * plus each outpoint between vout and nLockTime, unconditionally for v3.
+ * plus each outpoint between vout and nLockTime when vrefin is not empty.
  * The supported modes are ALL and SINGLE|ANYONECANPAY. Reference inputs
  * remain committed in both modes, as required by the node's serializer.
  */
@@ -778,8 +788,9 @@ function hashForAuthScript(
     amountBuffer,
     sequence,
     hashOutputs,
-    // NIP-014: for v3, hashRefInputs goes between hashOutputs and locktime,
-    // ALWAYS — an empty vrefin contributes hash256(""), not a zero hash.
+    // NIP-014: hashRefInputs goes between hashOutputs and locktime when the
+    // transaction has reference inputs; without them this is BIP-143 as in
+    // 1.0.7, version 3 included.
     ...(refInputs ? [hash256(refInputs.concat)] : []),
     locktime,
     ...(strictWitnessVersion !== null ? [Buffer.from([strictWitnessVersion])] : []),
@@ -872,6 +883,7 @@ export function sign(
   // never touches the wire: the signed hex is re-serialized by the codec.
   const decoded = parseTransaction(rawTransactionHex);
   const refInputs = getRefInputsData(decoded);
+  const sighashRefInputs = getSighashRefInputs(refInputs);
   const inputHashTypes = resolveInputHashTypes(options, decoded);
 
   // Consensus (tx_verify.cpp:520-537): within a v3 tx, vrefin entries must
@@ -1188,7 +1200,7 @@ export function sign(
           amount,
           HASH_TYPE,
           NOAUTH_TYPE,
-          refInputs
+          sighashRefInputs
         );
         const rawSignature = keyPair.sign(sighash);
         const signatureWithHashType = bitcoin.script.signature.encode(
@@ -1335,7 +1347,7 @@ export function sign(
         getSighashAmount(utxo),
         hashType,
         template.authType,
-        refInputs,
+        sighashRefInputs,
         witnessVersion
       );
       tx.setInputScript(i, Buffer.alloc(0));
@@ -1428,7 +1440,7 @@ export function sign(
           getSighashAmount(utxo),
           HASH_TYPE,
           spendTemplate.authType,
-          refInputs
+          sighashRefInputs
         );
         const signature = Buffer.from(
           ml_dsa44.sign(new Uint8Array(sighash), new Uint8Array(pqMaterial.secretKey), {
@@ -1452,7 +1464,7 @@ export function sign(
           getSighashAmount(utxo),
           HASH_TYPE,
           spendTemplate.authType,
-          refInputs
+          sighashRefInputs
         );
         const rawSignature = keyPair.sign(sighash);
         const signatureWithHashType = bitcoin.script.signature.encode(
@@ -1492,8 +1504,8 @@ export function sign(
     }
 
     const keyPair = getKeyPairByAddress(utxo.address);
-    const sighash = refInputs
-      ? hashForLegacySignatureV3(tx, refInputs, i, scriptPubKey, hashType)
+    const sighash = sighashRefInputs
+      ? hashForLegacySignatureV3(tx, sighashRefInputs, i, scriptPubKey, hashType)
       : tx.hashForSignature(i, scriptPubKey, hashType);
     const rawSignature = keyPair.sign(sighash);
 

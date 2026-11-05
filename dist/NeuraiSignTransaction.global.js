@@ -13740,8 +13740,6 @@
         ];
     }
 
-    /** Exact monetary primitives. This module has no runtime dependencies. */
-
     // base-x encoding / decoding
     // Copyright (c) 2018 base-x contributors
     // Copyright (c) 2014-2018 The Bitcoin Core developers (base58.cpp)
@@ -14744,6 +14742,9 @@
             scriptHex: bytesToHex$1(bytes)
         };
     }
+    new TextEncoder();
+    new TextDecoder();
+    new TextEncoder().encode('NeuraiAssetAuthProposal');
 
     /** Exact monetary primitives. This module has no runtime dependencies. */
     /** Normalize a raw integer without preserving an already rounded number. */
@@ -16406,12 +16407,19 @@
             for (let i = 0; i < voutCount; i += 1)
                 outputs.push(readOutput(reader));
         }
-        // NIP-014: vrefin sits between vout and witness, v3 only (even when empty).
+        // NIP-014: reference inputs sit between vout and witness, announced by flag
+        // 0x02. Without the flag a version 3 transaction reads as 1.0.7 reads it.
         const vrefin = [];
-        if (version === 3) {
+        const hasRefInputs = (flags & 2) !== 0;
+        if (hasRefInputs) {
+            flags ^= 2;
             const refCount = reader.readCount(36, 'refinput');
             for (let i = 0; i < refCount; i += 1)
                 vrefin.push(readOutpoint(reader));
+            if (vrefin.length === 0) {
+                // One encoding per transaction: the flag means some.
+                throw new Error('Superfluous reference inputs record (flag 0x02 with no reference inputs)');
+            }
         }
         if (flags & 1) {
             flags ^= 1;
@@ -16423,6 +16431,11 @@
                     stack.push(bytesToHex(reader.readBytes(elementLength)));
                 }
                 input.witness = stack;
+            }
+            if (hasRefInputs && !inputs.some(inputHasWitness)) {
+                // With reference inputs the witness flag means some witness; 1.0.7 reads
+                // an empty witness record without them, and so does the node.
+                throw new Error('Superfluous witness record (flag 0x01 with no witness data)');
             }
         }
         if (flags) {
@@ -16461,10 +16474,13 @@
             throw new Error(`vrefin requires transaction version 3 (got version ${tx.version})`);
         }
         const withWitness = (options.includeWitness ?? true) && tx.inputs.some(inputHasWitness);
+        // NIP-014: reference inputs keep the extended format without witnesses too,
+        // because the txid commits to them.
+        const flags = (withWitness ? 1 : 0) | (vrefin.length > 0 ? 2 : 0);
         const parts = [u32LE(tx.version >>> 0)];
-        if (withWitness) {
+        if (flags) {
             // Extended format: dummy empty vin + flags byte.
-            parts.push(Uint8Array.of(0x00, 0x01));
+            parts.push(Uint8Array.of(0x00, flags));
         }
         parts.push(compactSize(tx.inputs.length));
         for (const input of tx.inputs)
@@ -16472,7 +16488,7 @@
         parts.push(compactSize(tx.outputs.length));
         for (const output of tx.outputs)
             parts.push(serializeCodecOutput(output));
-        if (tx.version === 3) {
+        if (flags & 2) {
             parts.push(compactSize(vrefin.length));
             for (const ref of vrefin)
                 parts.push(serializeOutpoint$1(ref));
@@ -17240,7 +17256,7 @@
             projectUrl: "https://github.com/NeuraiProject",
             id: "1EB2ACBA-E8E0-4970-BB20-37DA4B70F6A6",
             network: "testnet",
-            hashGenesisBlock: "0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021",
+            hashGenesisBlock: "000000c710413a4265a996d30c86043aedef6a563900f1bc43fea61d5b2dc77d",
             port: 19100,
             portRpc: 19101,
             protocol: {
@@ -17667,10 +17683,19 @@
         };
     }
     /**
-     * Legacy (SIGVERSION_BASE) sighash for a v3 transaction. bitcoinjs'
-     * `hashForSignature` cannot produce it: the node's
+     * The reference inputs the signature hashes commit to. The node's legacy
+     * serializer and BIP-143/AuthScript preimage include them only when the
+     * transaction has some; without them a v3 transaction signs exactly as in
+     * 1.0.7 (`interpreter.cpp`, `!txTo.vrefin.empty()`).
+     */
+    function getSighashRefInputs(refInputs) {
+        return refInputs && refInputs.count > 0 ? refInputs : null;
+    }
+    /**
+     * Legacy (SIGVERSION_BASE) sighash for a transaction with reference inputs.
+     * bitcoinjs' `hashForSignature` cannot produce it: the node's
      * `CTransactionSignatureSerializer` serializes `CompactSize(vrefin.length)`
-     * plus each outpoint between vout and nLockTime, unconditionally for v3.
+     * plus each outpoint between vout and nLockTime when vrefin is not empty.
      * The supported modes are ALL and SINGLE|ANYONECANPAY. Reference inputs
      * remain committed in both modes, as required by the node's serializer.
      */
@@ -17761,8 +17786,9 @@
             amountBuffer,
             sequence,
             hashOutputs,
-            // NIP-014: for v3, hashRefInputs goes between hashOutputs and locktime,
-            // ALWAYS — an empty vrefin contributes hash256(""), not a zero hash.
+            // NIP-014: hashRefInputs goes between hashOutputs and locktime when the
+            // transaction has reference inputs; without them this is BIP-143 as in
+            // 1.0.7, version 3 included.
             ...(refInputs ? [hash256(refInputs.concat)] : []),
             locktime,
             ...(strictWitnessVersion !== null ? [bufferExports.Buffer.from([strictWitnessVersion])] : []),
@@ -17833,6 +17859,7 @@
         // never touches the wire: the signed hex is re-serialized by the codec.
         const decoded = parseTransaction(rawTransactionHex);
         const refInputs = getRefInputsData(decoded);
+        const sighashRefInputs = getSighashRefInputs(refInputs);
         const inputHashTypes = resolveInputHashTypes(options, decoded);
         // Consensus (tx_verify.cpp:520-537): within a v3 tx, vrefin entries must
         // be unique (bad-txns-vrefin-duplicate) and must not overlap any vin
@@ -18077,7 +18104,7 @@
                     // AuthScript-NOAUTH sighash: scriptCode = the covenant (witness
                     // script), authType = 0x00. Amount is the UTXO's XNA value —
                     // typically 0 for asset covenant outputs.
-                    const sighash = hashForAuthScript(tx, i, covenantScriptBytes, amount, HASH_TYPE, NOAUTH_TYPE, refInputs);
+                    const sighash = hashForAuthScript(tx, i, covenantScriptBytes, amount, HASH_TYPE, NOAUTH_TYPE, sighashRefInputs);
                     const rawSignature = keyPair.sign(sighash);
                     const signatureWithHashType = signature.encode(bufferExports.Buffer.from(rawSignature), HASH_TYPE);
                     const witnessStack = buildAuthScriptWitnessNoAuth({
@@ -18176,7 +18203,7 @@
                 if (!sameBytes(actualCommitment, expectedCommitment)) {
                     throw new Error(`AuthScript commitment mismatch for ${txid}:${vout} (witness v${witnessVersion}). The provided key does not match the prevout script`);
                 }
-                const sighash = hashForAuthScript(tx, i, template.witnessScript, getSighashAmount(utxo), hashType, template.authType, refInputs, witnessVersion);
+                const sighash = hashForAuthScript(tx, i, template.witnessScript, getSighashAmount(utxo), hashType, template.authType, sighashRefInputs, witnessVersion);
                 tx.setInputScript(i, bufferExports.Buffer.alloc(0));
                 tx.setWitness(i, [
                     bufferExports.Buffer.from([template.authType]),
@@ -18241,7 +18268,7 @@
                 }
                 else if (spendTemplate.authType === PQ_AUTHSCRIPT_TYPE) {
                     const pqMaterial = getPQMaterialByAddress(utxo.address);
-                    const sighash = hashForAuthScript(tx, i, spendTemplate.witnessScript, getSighashAmount(utxo), HASH_TYPE, spendTemplate.authType, refInputs);
+                    const sighash = hashForAuthScript(tx, i, spendTemplate.witnessScript, getSighashAmount(utxo), HASH_TYPE, spendTemplate.authType, sighashRefInputs);
                     const signature = bufferExports.Buffer.from(ml_dsa44.sign(new Uint8Array(sighash), new Uint8Array(pqMaterial.secretKey), {
                         extraEntropy: false,
                     }));
@@ -18256,7 +18283,7 @@
                 }
                 else {
                     const keyPair = getKeyPairByAddress(utxo.address);
-                    const sighash = hashForAuthScript(tx, i, spendTemplate.witnessScript, getSighashAmount(utxo), HASH_TYPE, spendTemplate.authType, refInputs);
+                    const sighash = hashForAuthScript(tx, i, spendTemplate.witnessScript, getSighashAmount(utxo), HASH_TYPE, spendTemplate.authType, sighashRefInputs);
                     const rawSignature = keyPair.sign(sighash);
                     const signatureWithHashType = signature.encode(bufferExports.Buffer.from(rawSignature), HASH_TYPE);
                     witnessStack = [
@@ -18289,8 +18316,8 @@
                 continue;
             }
             const keyPair = getKeyPairByAddress(utxo.address);
-            const sighash = refInputs
-                ? hashForLegacySignatureV3(tx, refInputs, i, scriptPubKey, hashType)
+            const sighash = sighashRefInputs
+                ? hashForLegacySignatureV3(tx, sighashRefInputs, i, scriptPubKey, hashType)
                 : tx.hashForSignature(i, scriptPubKey, hashType);
             const rawSignature = keyPair.sign(sighash);
             const signatureWithHashType = signature.encode(bufferExports.Buffer.from(rawSignature), hashType);

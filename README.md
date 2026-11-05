@@ -4,6 +4,24 @@ Signs a Neurai transaction.
 
 The purpose of this project is to enable signing XNA, asset and AuthScript inputs in pure JavaScript for every Neurai address type: classic P2PKH, generic AuthScript witness v1 with its three auth types (NoAuth, PQ and Legacy), strict PQ witness v2 and strict ECDSA witness v3.
 
+## 3.5.0: reference inputs announced by a serialization flag
+
+The node moved NIP-014 reference inputs to flag `0x02` of the extended
+serialization (Neurai DePIN-Test `d4ff4ef`, live on the testnet reset of
+2026-11-05). A version 3 transaction without reference inputs is now encoded,
+identified and signed exactly as in 1.0.7: its legacy and AuthScript signature
+hashes no longer commit to an empty `vrefin`. With reference inputs both still
+commit to them (the legacy serializer after the outputs, `hashRefInputs`
+before the locktime in the AuthScript preimage), and `OP_TXHASH` bit 8 and CTV
+are unchanged. A version 3 transaction signed by 3.4.0 is invalid on the new
+testnet.
+
+- Requires `@neuraiproject/neurai-create-transaction` `^0.10.0` (the codec in
+  the new format) and `@neuraiproject/neurai-scripts` `^0.12.0`.
+- Checked against a regtest node built from Neurai `7f1773e` (`npm run
+  test:regtest`: version 3 with and without reference inputs, through `sign`
+  and `signPsbt`).
+
 ## 3.4.0: no-RBF sequence rule
 
 Neurai removed transaction replacement: from `nNoRbfHeight` (block 10 of the

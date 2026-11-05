@@ -48,7 +48,7 @@ export const xna = {
     projectUrl: "https://github.com/NeuraiProject",
     id: "1EB2ACBA-E8E0-4970-BB20-37DA4B70F6A6",
     network: "testnet",
-    hashGenesisBlock: "0000008b384aeffecdab182575dc4e86c9f07f90318c65088532660ed9a8a021",
+    hashGenesisBlock: "000000c710413a4265a996d30c86043aedef6a563900f1bc43fea61d5b2dc77d",
     port: 19100,
     portRpc: 19101,
     protocol: {

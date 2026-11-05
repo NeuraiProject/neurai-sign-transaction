@@ -248,8 +248,9 @@ export function estimateVirtualSize(
   };
 
   if (decoded.version === 3) {
-    // The codec accounts for vrefin (CompactSize + 36 bytes per reference)
-    // and the witness discount, mirroring the node's serialization.
+    // The codec accounts for vrefin (flag 0x02, CompactSize + 36 bytes per
+    // reference, when present) and the witness discount, mirroring the node's
+    // serialization.
     return estimateTransactionSize({
       ...decoded,
       inputs: decoded.inputs.map((input) => {

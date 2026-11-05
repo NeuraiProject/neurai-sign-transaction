@@ -52,7 +52,8 @@ function oracle(tx, index, family, script, amount, type) {
     parts.push(compact(single ? index + 1 : tx.outputs.length));
     for (let j = 0; j < (single ? index + 1 : tx.outputs.length); j++)
       parts.push(single && j !== index ? cat(Buffer.alloc(8, 255), Buffer.from([0])) : out(tx.outputs[j]));
-    if (tx.version === 3) parts.push(compact(tx.vrefin.length), refs);
+    // NIP-014 (interpreter.cpp): reference inputs are committed only when present.
+    if (tx.vrefin.length) parts.push(compact(tx.vrefin.length), refs);
     return H(cat(...parts, u32(tx.locktime), u32(type)));
   }
   const i = tx.inputs[index];
@@ -60,7 +61,7 @@ function oracle(tx, index, family, script, amount, type) {
   const seq = single ? Buffer.alloc(32) : H(cat(...tx.inputs.map(i => u32(i.sequence))));
   const outs = H(single ? out(tx.outputs[index]) : cat(...tx.outputs.map(out)));
   return H(cat(u32(tx.version), prev, seq, point(i), Buffer.from([1, 0x51]), u64(amount), u32(i.sequence), outs,
-    ...(tx.version === 3 ? [H(refs)] : []), u32(tx.locktime), Buffer.from(family === "pq" ? [2, 1] : [3, 2]), u32(type)));
+    ...(tx.vrefin.length ? [H(refs)] : []), u32(tx.locktime), Buffer.from(family === "pq" ? [2, 1] : [3, 2]), u32(type)));
 }
 function signed(tx, family, options = {}, api = Signer) {
   const index = tx.inputs.length - 1, i = tx.inputs[index], key = KEYS[family];

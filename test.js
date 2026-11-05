@@ -2226,8 +2226,10 @@ test("v3 — estimateVirtualSize accounts for vrefin", () => {
 
   const estEmpty = Signer.estimateVirtualSize("xna-pq-test", rawEmpty, utxos);
   const estRefs = Signer.estimateVirtualSize("xna-pq-test", rawRefs, utxos);
-  // Two references = 72 extra non-witness bytes.
-  expect(estRefs - estEmpty).toBe(72);
+  // Two references = 72 bytes plus their CompactSize, outside the witness, and
+  // flag 0x02 keeps the 2-byte marker in the stripped form: 75 * 3 + 73 = 298
+  // weight units, 75 vbytes once rounded for this transaction.
+  expect(estRefs - estEmpty).toBe(75);
 
   const actual = CTcodec.estimateTransactionSize(
     Signer.sign("xna-pq-test", rawRefs, utxos, keys)
