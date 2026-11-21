@@ -43,6 +43,19 @@ export declare const VBYTES: {
     /** @deprecated Same as `witnessOutputBytes`, which covers every witness version. */
     readonly pqOutputBytes: 43;
 };
+/** Work counters for the candidate block, in the units returned by the node. */
+export interface TransactionPolicySize {
+    weight: number;
+    /** Core GetTransactionSigOpCost units. Legacy and P2SH sigops count four times;
+     * witness sigops already carry their execution cost. */
+    sigOpCost: number;
+    poseidonWork: number;
+    assetAuthWork: number;
+    workWeightActive: boolean;
+    bytesPerSigOp?: number;
+}
+/** Virtual bytes used for relay fees, including NIP-028 when active. */
+export declare function estimatePolicyVsize({ weight, sigOpCost, poseidonWork, assetAuthWork, workWeightActive, bytesPerSigOp, }: TransactionPolicySize): number;
 /** Destination kind of an address; `unknown` when it does not decode. */
 export declare function getAddressKind(address: string): AddressKind;
 /**

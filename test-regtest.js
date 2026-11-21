@@ -15,6 +15,7 @@ const fs = require("fs");
 const bitcoin = require("bitcoinjs-lib");
 const NeuraiKey = require("@neuraiproject/neurai-key");
 const CT = require("@neuraiproject/neurai-create-transaction");
+const { decimalToSatoshis } = require("@neuraiproject/neurai-create-transaction/amounts");
 const Scripts = require("@neuraiproject/neurai-scripts");
 const Signer = require("./dist/index.cjs");
 
@@ -232,7 +233,7 @@ describe.skipIf(MODE === "skip")("every address type, signed by this library, ac
     const neuraid = MODE === "docker" ? CONTAINER_NEURAID : LOCAL_NEURAID;
     sh(["rm", "-rf", DATADIR]);
     sh(["mkdir", "-p", DATADIR]);
-    sh([neuraid, ...NODE_ARGS, "-daemon", "-server=1", "-listen=0", "-assetindex=1", "-addressindex=1", `-port=${RPC_PORT + 1}`]);
+    sh([neuraid, ...NODE_ARGS, "-daemon", "-server=1", "-listen=0", "-assetindex=1", "-addressindex=1", "-blocktimereductionheight=500", `-port=${RPC_PORT + 1}`]);
     let ready = false;
     for (let attempt = 0; attempt < 120 && !ready; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -751,4 +752,39 @@ describe.skipIf(MODE === "skip")("every address type, signed by this library, ac
     expect(utxosOf(custody, "P2AHGOLD")).toEqual([]);
     expect(cliJson("listassetbalancesbyaddress", holder.address)["P2AHGOLD"]).toBe(10);
   }, 120_000);
+  it("matches Core's admission size and fee boundary for a Poseidon spend", () => {
+    const height = Number(cli("getblockcount"));
+    if (height < 500) cli("generate", 500 - height);
+    const count = 50;
+    // OP_0, fifty Poseidon permutations, OP_DROP, OP_TRUE (no authentication key).
+    const script = "00" + "c9".repeat(count) + "7551";
+    const address = covenantAddress(script);
+    topUp(address, 1);
+    const prev = xnaUtxo(address);
+    const spend = (fee) => {
+      const tx = CT.parseTransaction(CT.createPaymentTransaction({
+        inputs: [{ txid: prev.txid, vout: prev.outputIndex }],
+        payments: [{ address: WALLETS.legacy.address, valueSats: BigInt(prev.satoshis) - fee }],
+      }).rawTx);
+      tx.inputs[0].witness = ["00", script];
+      return CT.serializeTransaction(tx);
+    };
+    const size = Signer.estimatePolicyVsize({ weight: CT.estimateTransactionSize(spend(0n)).weight,
+      sigOpCost: 4, poseidonWork: count, assetAuthWork: 0, workWeightActive: true });
+    const rate = decimalToSatoshis(cliJson("getnetworkinfo").relayfee);
+    const fee = (BigInt(size) * rate + 999n) / 1000n;
+    const [short] = cliJson("testmempoolaccept", JSON.stringify([spend(fee - 1n)]));
+    expect(Boolean(short.allowed)).toBe(false);
+    expect(short["reject-reason"]).toMatch(/min relay fee not met/);
+    expect(short.vsize).toBe(size);
+    const raw = spend(fee);
+    const [accepted] = cliJson("testmempoolaccept", JSON.stringify([raw]));
+    expect(Boolean(accepted.allowed), accepted["reject-reason"]).toBe(true);
+    expect(accepted.vsize).toBe(size);
+    const entry = cliJson("getmempoolentry", cli("sendrawtransaction", raw));
+    expect(entry.poseidonwork).toBe(count);
+    expect(entry.size).toBe(size);
+    cli("generate", 1);
+  }, 120_000);
+
 });

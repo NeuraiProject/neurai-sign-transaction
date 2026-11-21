@@ -72,6 +72,34 @@ export const VBYTES = {
   pqOutputBytes: 43,
 } as const;
 
+/** Work counters for the candidate block, in the units returned by the node. */
+export interface TransactionPolicySize {
+  weight: number;
+  /** Core GetTransactionSigOpCost units. Legacy and P2SH sigops count four times;
+   * witness sigops already carry their execution cost. */
+  sigOpCost: number;
+  poseidonWork: number;
+  assetAuthWork: number;
+  workWeightActive: boolean;
+  bytesPerSigOp?: number;
+}
+
+/** Virtual bytes used for relay fees, including NIP-028 when active. */
+export function estimatePolicyVsize({
+  weight, sigOpCost, poseidonWork, assetAuthWork, workWeightActive, bytesPerSigOp = 20,
+}: TransactionPolicySize): number {
+  for (const value of [weight, sigOpCost, poseidonWork, assetAuthWork, bytesPerSigOp]) {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new RangeError("Policy size inputs must be nonnegative safe integers");
+    }
+  }
+  if (typeof workWeightActive !== "boolean") throw new TypeError("workWeightActive must be a boolean");
+  const workWeight = workWeightActive ? Math.max(80 * poseidonWork, 36 * assetAuthWork) : 0;
+  const policyWeight = Math.max(weight, sigOpCost * bytesPerSigOp, workWeight);
+  if (!Number.isSafeInteger(policyWeight)) throw new RangeError("Policy weight exceeds safe integer range");
+  return Math.ceil(policyWeight / 4);
+}
+
 /** Destination kind of an address; `unknown` when it does not decode. */
 export function getAddressKind(address: string): AddressKind {
   if (typeof address !== "string" || address.length === 0) return "unknown";

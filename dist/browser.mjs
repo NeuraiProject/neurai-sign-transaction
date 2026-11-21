@@ -18549,6 +18549,21 @@ const VBYTES = {
     /** @deprecated Same as `witnessOutputBytes`, which covers every witness version. */
     pqOutputBytes: 43,
 };
+/** Virtual bytes used for relay fees, including NIP-028 when active. */
+function estimatePolicyVsize({ weight, sigOpCost, poseidonWork, assetAuthWork, workWeightActive, bytesPerSigOp = 20, }) {
+    for (const value of [weight, sigOpCost, poseidonWork, assetAuthWork, bytesPerSigOp]) {
+        if (!Number.isSafeInteger(value) || value < 0) {
+            throw new RangeError("Policy size inputs must be nonnegative safe integers");
+        }
+    }
+    if (typeof workWeightActive !== "boolean")
+        throw new TypeError("workWeightActive must be a boolean");
+    const workWeight = workWeightActive ? Math.max(80 * poseidonWork, 36 * assetAuthWork) : 0;
+    const policyWeight = Math.max(weight, sigOpCost * bytesPerSigOp, workWeight);
+    if (!Number.isSafeInteger(policyWeight))
+        throw new RangeError("Policy weight exceeds safe integer range");
+    return Math.ceil(policyWeight / 4);
+}
 /** Destination kind of an address; `unknown` when it does not decode. */
 function getAddressKind(address) {
     if (typeof address !== "string" || address.length === 0)
@@ -18802,5 +18817,5 @@ const Signer = {
     SIGN_HASH_TYPES,
 };
 
-export { SIGN_HASH_TYPES, VBYTES, Signer as default, estimateInputVbytes, estimateOutputBytes, estimateTransactionVbytes, estimateVirtualSize, getAddressKind, getScriptKind, isPQAddress, isPQScript, sign, signPsbt };
+export { SIGN_HASH_TYPES, VBYTES, Signer as default, estimateInputVbytes, estimateOutputBytes, estimatePolicyVsize, estimateTransactionVbytes, estimateVirtualSize, getAddressKind, getScriptKind, isPQAddress, isPQScript, sign, signPsbt };
 //# sourceMappingURL=browser.mjs.map

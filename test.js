@@ -2531,3 +2531,17 @@ test("every neurai-key 5 network label signs with its chain's WIF", () => {
   }
   expect(() => Signer.sign("mainnet", strictSpendTx().toHex(), [], {})).toThrow(/Invalid network specified/);
 });
+
+describe("NIP-028 policy size", () => {
+  const base = { weight: 401, sigOpCost: 0, poseidonWork: 0, assetAuthWork: 0, workWeightActive: true };
+  it("mirrors ceil(max(weight, sigops, active work) / 4)", () => {
+    for (const [patch, expected] of [
+      [{}, 101], [{ sigOpCost: 100 }, 500], [{ sigOpCost: 100, bytesPerSigOp: 10 }, 250],
+      [{ poseidonWork: 5000 }, 100000], [{ assetAuthWork: 15000 }, 135000],
+      [{ poseidonWork: 5000, assetAuthWork: 15000 }, 135000],
+      [{ poseidonWork: 5000, workWeightActive: false }, 101],
+    ]) expect(Signer.estimatePolicyVsize({ ...base, ...patch })).toBe(expected);
+    expect(() => Signer.estimatePolicyVsize({ ...base, weight: -1 })).toThrow();
+    expect(() => Signer.estimatePolicyVsize({ ...base, sigOpCost: Number.MAX_SAFE_INTEGER })).toThrow();
+  });
+});

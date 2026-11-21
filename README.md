@@ -552,3 +552,9 @@ used in the signature hash (zero for standard asset-wrapped outputs).
 
 bitcoinjs v7 byte arrays are Uint8Array. This package still returns signed
 transaction hex; callers do not need to decode its internal byte arrays.
+
+### Relay fee size
+
+`estimatePolicyVsize({ weight, sigOpCost, poseidonWork, assetAuthWork, workWeightActive, bytesPerSigOp })` returns the virtual size used for admission. Supply the signed transaction's weight and the executed work counters. The candidate block height determines `workWeightActive`, and `bytesPerSigOp` defaults to 20. With NIP-028 active, 5,000 Poseidon permutations price a transaction at a minimum of 100,000 vB. Use `testmempoolaccept` for a signed script whose work is unknown.
+
+`sigOpCost` uses Core's `GetTransactionSigOpCost` units. Each legacy or P2SH sigop contributes four units and witness sigops contribute their applicable execution cost. For example, ten legacy sigops contribute 40 units, or 200 policy vB at the default 20 bytes per sigop when sigops dominate.

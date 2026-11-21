@@ -11,11 +11,12 @@ export type {
   PrivateKeyInput,
   SupportedNetwork,
 } from "./shared";
-export type { AddressKind } from "./estimate";
+export type { AddressKind, TransactionPolicySize } from "./estimate";
 export {
   VBYTES,
   getAddressKind,
   getScriptKind,
+  estimatePolicyVsize,
   estimateInputVbytes,
   estimateOutputBytes,
   estimateTransactionVbytes,
