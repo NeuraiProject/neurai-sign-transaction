@@ -541,7 +541,7 @@ If you build covenant spends, NoAuth witnesses, or Legacy AuthScript witnesses p
 
 ### Exact values and bitcoinjs-lib 7
 
-The signer uses bitcoinjs-lib **7.0.1** and keeps transaction output values and
+The signer uses bitcoinjs-lib **7.0.5** and keeps transaction output values and
 AuthScript input values as bigint throughout signing and size estimation.
 UTXO `satoshis` accepts bigint, integer text, or a safe integer number. Prefer
 `satoshis`; the historical fallback `value` still denotes raw units here.
